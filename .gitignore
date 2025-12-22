@@ -1,0 +1,7 @@
+*.jsonl
+*.json
+*.csv
+*.log
+*.yaml
+.outputs
+__pycache__/
