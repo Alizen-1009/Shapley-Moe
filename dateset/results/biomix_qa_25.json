@@ -1,0 +1,77 @@
+[
+    {
+        "text": "Out of the given list, which Gene is associated with head and neck cancer and uveal melanoma. Given list is:  ABO, CACNA2D1,  PSCA, TERT,  SULT1B1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with male breast cancer and urticaria. Given list is:  BABAM1, RAD51B,  PHGDH, ABO,  TERT"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with myeloproliferative neoplasm and interstitial lung disease. Given list is:  LRMDA, TERT,  CLDN14, UCK2,  STAT3"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with myelodysplastic syndrome and psoriasis. Given list is: VAV3,  TERT,  CLPTM1L,  PTPN22, HLA-B"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with cervix carcinoma and autoimmune hepatitis. Given list is: CHST11,  FAT3,  IL6,  ERAP1, HLA-DQA1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with autoimmune hepatitis and membranous glomerulonephritis. Given list is:  STAT4, HLA-DQA1, TNFSF13,  CFH,  KITLG"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with interstitial lung disease and triple-receptor negative breast cancer. Given list is:  TERT,  FER, TERT,  PCDH15, PTK2B"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with herpes zoster and psoriatic arthritis. Given list is: HLA-B,  ADGRV1, CPS1,  SULT1B1,  ATG5"
+    },
+    {
+        "text": "Out of the given list, which Variant is associated with collagenous colitis and autoimmune hepatitis. Given list is: rs2187668,  rs6426833, rs6969780,  rs3787184,  rs230540"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with myositis and Sjogren's syndrome. Given list is: STAT4,  FTO, ACOXL,  MORC4,  TNXB"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with liver cirrhosis and uveal melanoma. Given list is:  VAV3,  PSCA, CACNA2D1,  NTM, SULT1B1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with membranous glomerulonephritis and cutaneous lupus erythematosus. Given list is:  ZFHX3,  HLA-DQA1, EPDR1,  CRTC1, HLA-DQA1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with nephrotic syndrome and oral cavity cancer. Given list is:  CRTC1, PLG,  AHR,  SLC14A2, HLA-DQB1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with duodenal ulcer and atrophic gastritis. Given list is:  SLC17A4,  GATA3, MST1, PSCA,  SCN1A"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with cocaine dependence and androgenic alopecia. Given list is:  ATG5,  ADGRV1, NEURL1, SLC14A2,  HLA-DPB1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with autoimmune hepatitis and collagenous colitis. Given list is:  KALRN,  TERT, PLA2R1,  NANOS1, HLA-DQA1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with duodenal ulcer and gastric fundus cancer. Given list is:  CACNA1S,  MUC5B, FBN1, PSCA,  BTC"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with interstitial lung disease and idiopathic pulmonary fibrosis. Given list is:  ATXN2, ERAP1,  RBFOX1,  NANOS1, TERT"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with rheumatoid arthritis and myositis. Given list is:  STAT3, BARD1, PTPN22,  PRKN,  C5AR1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with dengue hemorrhagic fever and intracranial aneurysm. Given list is: RP1,  TLR1,  UCK2,  GNE, FADS1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with ulcerative colitis and ankylosing spondylitis. Given list is:  ALDH1A2, IL23R,  DTNB, SNTB1,  MYH7"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with myelodysplastic syndrome and psoriatic arthritis. Given list is:  MST1,  BTNL2, HLA-B,  HERC2, HLA-DQB1"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with ankylosing spondylitis and inflammatory bowel disease. Given list is:  LPP, UCK2,  YLPM1,  DAB2IP, IL23R"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with duodenal ulcer and malaria. Given list is: IGF1R,  HLA-DQA1,  USHBP1, ABO,  GTF2I"
+    },
+    {
+        "text": "Out of the given list, which Gene is associated with diffuse large B-cell lymphoma and psoriasis. Given list is:  ERAP1, CLPTM1L,  ADGRG6, HLA-B,  MST1"
+    }
+]

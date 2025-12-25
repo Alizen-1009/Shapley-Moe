@@ -32,19 +32,23 @@ class ModelPruner:
         model_path: str,
         selection_json_path: str,
         output_dir: str,
-        device: str = "auto",
+        device_map: str = "auto",
     ):
         """
         Args:
             model_path: 原始模型路径
             selection_json_path: 专家选择JSON文件路径
             output_dir: 输出模型保存目录
-            device: 设备 (auto, cuda, cpu)
+            device_map: 设备映射策略
+                - "auto": 自动分配到可用GPU（支持多卡TP）
+                - "balanced": 均匀分配到所有GPU
+                - "cuda:0": 仅使用指定单卡
+                - "cpu": 仅使用CPU
         """
         self.model_path = model_path
         self.selection_json_path = selection_json_path
         self.output_dir = output_dir
-        self.device = device
+        self.device_map = device_map
         self.model = None
         self.tokenizer = None
         self.selected_experts = None
@@ -65,6 +69,7 @@ class ModelPruner:
     def load_model(self):
         """加载模型和tokenizer"""
         logger.info(f"加载模型: {self.model_path}")
+        logger.info(f"设备映射策略: {self.device_map}")
 
         # 加载tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -73,13 +78,19 @@ class ModelPruner:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # 加载模型
+        # 加载模型（支持多卡TP）
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             torch_dtype="auto",
-            device_map=self.device,
+            device_map=self.device_map,  # auto/balanced 会自动分配到多卡
             trust_remote_code=True,
         )
+        
+        # 显示设备分配情况
+        if hasattr(self.model, 'hf_device_map'):
+            devices_used = set(str(v) for v in self.model.hf_device_map.values())
+            logger.info(f"模型分布在设备: {devices_used}")
+        
         logger.info("模型加载成功")
 
     def zero_out_experts(self):
@@ -300,13 +311,26 @@ def main():
         help="输出模型保存目录",
     )
     parser.add_argument(
-        "--device",
+        "--device_map",
         type=str,
         default="auto",
-        help="设备 (auto, cuda:0, cpu 等)",
+        help="设备映射策略: auto(多卡自动分配), balanced(均匀分配), cuda:0(单卡), cpu",
+    )
+    # 兼容旧参数
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="(已废弃，请使用 --device_map)",
     )
 
     args = parser.parse_args()
+    
+    # 兼容旧的 --device 参数
+    device_map = args.device_map
+    if args.device is not None:
+        logger.warning("--device 参数已废弃，请使用 --device_map")
+        device_map = args.device
 
     # 检查输入文件是否存在
     if not os.path.exists(args.model_path):
@@ -322,7 +346,7 @@ def main():
         model_path=args.model_path,
         selection_json_path=args.selection_file,
         output_dir=args.output_dir,
-        device=args.device,
+        device_map=device_map,
     )
 
     pruner.run()
