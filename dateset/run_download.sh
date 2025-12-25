@@ -40,7 +40,7 @@ show_help() {
 }
 
 # 解析参数
-DATASET="gsm8k"
+DATASET="ontonotes5"
 NUM_SAMPLES=25
 WITH_ANSWERS=""
 

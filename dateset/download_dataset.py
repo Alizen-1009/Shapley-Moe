@@ -25,34 +25,96 @@ DATASET_CONFIGS = {
         "text_field": "prompt",
         "answer_field": "canonical_solution",
     },
-    "hellaswag": {
-        "path": "Rowan/hellaswag",
-        "config": None,
-        "split": "train",
-        "text_field": "ctx",
-        "answer_field": "endings",
-    },
-    "arc_challenge": {
-        "path": "allenai/ai2_arc",
-        "config": "ARC-Challenge",
-        "split": "train",
-        "text_field": "question",
-        "answer_field": "choices",
-    },
-    "mmlu": {
-        "path": "cais/mmlu",
-        "config": "all",
-        "split": "test",
-        "text_field": "question",
-        "answer_field": "choices",
-    },
-    "truthfulqa": {
+
+
+    "truthful_qa": {
         "path": "truthfulqa/truthful_qa",
         "config": "generation",
         "split": "validation",
         "text_field": "question",
         "answer_field": "best_answer",
     },
+    # 新增数据集
+    "math_500": {
+        "path": "HuggingFaceH4/MATH-500",
+        "config": None,
+        "split": "test",
+        "text_field": "problem",
+        "answer_field": "answer",
+    },
+    "med_mcqa": {
+        "path": "openlifescienceai/medmcqa",
+        "config": None,
+        "split": "train",
+        "text_field": "question",
+        "answer_field": "cop",  # correct option (1-4)
+    },
+    "gpqa_diamond": {
+        "path": "hendrydong/gpqa_diamond",  # 公开版本，无需授权
+        "config": None,
+        "split": "test",
+        "text_field": "problem",
+        "answer_field": "solution",
+    },
+    "ontonotes5": {
+        "path": "SpeedOfMagic/ontonotes_english",  # 可用的公开版本
+        "config": None,
+        "split": "train",
+        "text_field": "tokens",  # 返回 token 列表
+        "answer_field": "ner_tags",
+    },
+    # 新增数据集 - 第二批
+    "logiqa": {
+        "path": "dmayhem93/agieval-logiqa-en",
+        "config": None,
+        "split": "test",
+        "text_field": "query",
+        "answer_field": "gold",
+    },
+    "aime24": {
+        "path": "Maxwell-Jia/AIME_2024",
+        "config": None,
+        "split": "train",
+        "text_field": "Problem",
+        "answer_field": "Answer",
+    },
+    "aime25": {
+        "path": "opencompass/AIME2025",
+        "config": "AIME2025-I",  # 可选: AIME2025-I 或 AIME2025-II
+        "split": "test",
+        "text_field": "question",
+        "answer_field": "answer",
+    },
+    "biomix_qa": {
+        "path": "kg-rag/BiomixQA",
+        "config": "mcq",  # 可选: mcq 或 true_false
+        "split": "train",
+        "text_field": "text",
+        "answer_field": "correct_answer",
+    },
+    "pubmedqa": {
+        "path": "qiaojin/PubMedQA",
+        "config": "pqa_labeled",
+        "split": "train",
+        "text_field": "question",
+        "answer_field": "final_decision",
+    },
+    # ARC 数据集 (AI2 Reasoning Challenge) - 评测使用 test 划分
+    "arc_challenge": {
+        "path": "allenai/ai2_arc",
+        "config": "ARC-Challenge",
+        "split": "test",
+        "text_field": "question",
+        "answer_field": "answerKey",
+    },
+    "arc_easy": {
+        "path": "allenai/ai2_arc",
+        "config": "ARC-Easy",
+        "split": "test",
+        "text_field": "question",
+        "answer_field": "answerKey",
+    },
+   
 }
 
 
@@ -135,6 +197,10 @@ def download_and_extract(
             else:
                 text = str(item)  # 最后的fallback
 
+        # 如果 text 是列表（如 tokens），拼接成字符串
+        if isinstance(text, list):
+            text = " ".join(str(t) for t in text)
+
         # 构建样本
         sample = {"text": text}
 
@@ -160,8 +226,11 @@ def download_and_extract(
         suffix = "_with_answers" if with_answers else ""
         output_file = f"{dataset_name}_{num_samples}{suffix}.json"
 
-    # 保存到 JSON 文件
-    output_path = os.path.join(os.path.dirname(__file__), output_file)
+    # 保存到 results 文件夹
+    script_dir = os.path.dirname(__file__)
+    results_dir = os.path.join(script_dir, "results")
+    os.makedirs(results_dir, exist_ok=True)
+    output_path = os.path.join(results_dir, output_file)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(samples, f, indent=4, ensure_ascii=False)
 
@@ -219,7 +288,7 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        help="数据集名称（gsm8k/hellaswag/arc_challenge/mmlu/truthfulqa）或自定义名称",
+        help="数据集名称（gsm8k/truthful_qa/math_500/gpqa_diamond 等）或自定义名称",
     )
     parser.add_argument(
         "--num_samples", type=int, default=25, help="提取的样本数量（默认: 25）"

@@ -6,7 +6,7 @@
 1. 加载模型和数据集
 2. 分析每个样本的专家激活情况
 3. 自动聚合统计结果
-4. 输出详细结果和聚合结果到 results 目录
+4. 输出聚合结果到 results 目录（仅保存 aggregated.json 文件）
 """
 
 import torch
@@ -182,7 +182,6 @@ def analyze_and_aggregate(
     dataset_name = os.path.splitext(os.path.basename(input_file))[0]
     model_name = os.path.basename(checkpoint)
 
-    detail_file = os.path.join(output_dir, f"{model_name}_{dataset_name}_details.jsonl")
     aggregated_file = os.path.join(
         output_dir, f"{model_name}_{dataset_name}_aggregated.json"
     )
@@ -250,55 +249,41 @@ def analyze_and_aggregate(
 
     aggregated_layers = defaultdict(Counter)  # {layer_idx: Counter({combo: count})}
 
-    with open(detail_file, "w", encoding="utf-8") as out_f:
-        for idx, item in enumerate(tqdm(prompts, desc="处理样本"), 1):
-            text = item.get("text", "")
-            if not text:
+    for idx, item in enumerate(tqdm(prompts, desc="处理样本"), 1):
+        text = item.get("text", "")
+        if not text:
+            continue
+
+        # Tokenize
+        inputs = tokenizer(text, return_tensors="pt")
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+        # 清空之前的记录
+        for h in hooks.values():
+            h.clear()
+
+        # 生成（触发 hooks）
+        try:
+            with torch.no_grad():
+                model.generate(**inputs, max_new_tokens=max_new_tokens)
+        except Exception as e:
+            logger.warning(f"样本 {idx} 生成失败: {e}")
+            continue
+
+        # 收集统计信息（不保存详细结果）
+        for layer_idx, hook in hooks.items():
+            if not hook.expert_indices:
                 continue
 
-            # Tokenize
-            inputs = tokenizer(text, return_tensors="pt")
-            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+            # 合并所有时间步的专家选择
+            all_indices = torch.cat(hook.expert_indices, dim=0)
+            all_indices = all_indices.reshape(-1, all_indices.shape[-1])
 
-            # 清空之前的记录
-            for h in hooks.values():
-                h.clear()
-
-            # 生成（触发 hooks）
-            try:
-                with torch.no_grad():
-                    model.generate(**inputs, max_new_tokens=max_new_tokens)
-            except Exception as e:
-                logger.warning(f"样本 {idx} 生成失败: {e}")
-                continue
-
-            # 收集本样本的统计
-            sample_stats = {"sample_id": idx, "text_snippet": text[:100], "layers": {}}
-
-            for layer_idx, hook in hooks.items():
-                if not hook.expert_indices:
-                    continue
-
-                # 合并所有时间步的专家选择
-                all_indices = torch.cat(hook.expert_indices, dim=0)
-                all_indices = all_indices.reshape(-1, all_indices.shape[-1])
-
-                # 统计每个专家组合的出现次数
-                combo_counter = Counter()
-                for row in all_indices:
-                    combo = tuple(sorted(row.tolist()))
-                    combo_str = str(combo)
-                    combo_counter[combo_str] += 1
-
-                    # 同时聚合到全局统计
-                    aggregated_layers[layer_idx][combo_str] += 1
-
-                sample_stats["layers"][layer_idx] = dict(combo_counter)
-
-            # 写入详细结果
-            out_f.write(json.dumps(sample_stats, ensure_ascii=False) + "\n")
-
-    logger.info(f"✓ 详细结果已保存: {detail_file}")
+            # 统计每个专家组合的出现次数并聚合到全局统计
+            for row in all_indices:
+                combo = tuple(sorted(row.tolist()))
+                combo_str = str(combo)
+                aggregated_layers[layer_idx][combo_str] += 1
 
     # 5. 保存聚合结果
     logger.info("正在保存聚合结果...")
@@ -339,7 +324,6 @@ def analyze_and_aggregate(
             logger.info(f"    {combo_str}: {count} 次")
 
     logger.info("=" * 70)
-    logger.info(f"详细结果: {detail_file}")
     logger.info(f"聚合结果: {aggregated_file}")
     logger.info("=" * 70)
 
@@ -354,18 +338,18 @@ def main():
   # 基础用法
   python analyze_and_aggregate.py \\
       --model /root/yuhao/hf_models/gpt-oss-20b \\
-      --data ../dateset/gsm8k_25.json
+      --data ../dateset/results/gsm8k_25.json
 
   # 指定输出目录
   python analyze_and_aggregate.py \\
       --model /root/yuhao/hf_models/gpt-oss-20b \\
-      --data ../dateset/gsm8k_100.json \\
+      --data ../dateset/results/gsm8k_100.json \\
       --output_dir ./results
 
   # 自定义生成参数
   python analyze_and_aggregate.py \\
       --model /path/to/model \\
-      --data ../dateset/hellaswag_50.json \\
+      --data ../dateset/results/hellaswag_50.json \\
       --max_new_tokens 256 \\
       --device cuda:0
         """,
