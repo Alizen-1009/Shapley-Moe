@@ -2,7 +2,7 @@
 # 一键运行专家激活分析
 
 # 配置参数
-MODEL_PATH="/root/yuhao/hf_models/Nemotron3-nano"
+MODEL_PATH="/root/yuhao/hf_models/deepseekv2-lite-coder"
 DATA_FILE="../dateset/results/ontonotes5_25.json"
 DATA_DIR="../dateset/results"
 OUTPUT_DIR="./results"

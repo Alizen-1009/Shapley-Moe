@@ -25,8 +25,6 @@ DATASET_CONFIGS = {
         "text_field": "prompt",
         "answer_field": "canonical_solution",
     },
-
-
     "truthful_qa": {
         "path": "truthfulqa/truthful_qa",
         "config": "generation",
@@ -114,7 +112,6 @@ DATASET_CONFIGS = {
         "text_field": "question",
         "answer_field": "answerKey",
     },
-   
 }
 
 

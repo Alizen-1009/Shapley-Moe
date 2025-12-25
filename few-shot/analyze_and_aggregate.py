@@ -43,28 +43,64 @@ class ExpertHook:
         self.expert_weights = []
 
 
-def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
+def register_expert_hooks(
+    model, hooks: Dict[int, ExpertHook], exclude_shared_experts: bool = True
+):
     """
     为模型的每个MoE层注册hook
 
     Args:
         model: 模型实例
         hooks: 字典，key为层索引，value为ExpertHook实例
+        exclude_shared_experts: 是否排除共享专家（默认: True）
 
     Returns:
         handles: Hook句柄列表
+        shared_expert_indices: 共享专家索引列表（如果存在）
     """
     handles = []
     layer_idx = 0
+    shared_expert_indices = []
 
-    # 尝试从配置中获取 experts_per_token (top-k)
+    # 尝试从配置中获取 experts_per_token (top-k) 和共享专家信息
     global_k = None
     if hasattr(model, "config") and hasattr(model.config, "experts_per_token"):
         global_k = model.config.experts_per_token
     elif hasattr(model, "config") and hasattr(model.config, "num_experts_per_tok"):
         global_k = model.config.num_experts_per_tok
 
+    # 尝试获取共享专家索引（DeepSeekV2 等模型）
+    if hasattr(model, "config"):
+        if hasattr(model.config, "shared_expert_indices"):
+            shared_expert_indices = model.config.shared_expert_indices
+        elif (
+            hasattr(model.config, "num_shared_experts")
+            and model.config.num_shared_experts > 0
+        ):
+            # 通常共享专家是前几个专家
+            shared_expert_indices = list(range(model.config.num_shared_experts))
+        elif hasattr(model.config, "num_experts"):
+            # DeepSeekV2: 共享专家通常是最后一个专家
+            num_experts = model.config.num_experts
+            if hasattr(model.config, "num_experts_to_route"):
+                num_routed = model.config.num_experts_to_route
+                if num_routed < num_experts:
+                    # 共享专家是路由专家之外的那些
+                    shared_expert_indices = list(range(num_routed, num_experts))
+
+    if shared_expert_indices:
+        logger.info(f"检测到共享专家索引: {shared_expert_indices}")
+
     for name, module in model.named_modules():
+        # 跳过 expert 子模块（如 experts.0, experts.62, shared_experts 等）
+        # 检查路径中是否包含 experts.数字 或 shared_experts
+        if (
+            ".experts." in name
+            or ".shared_experts" in name
+            or name.endswith(".experts")
+        ):
+            continue
+
         gate_module = None
 
         # 查找 gate 或 router 模块
@@ -72,9 +108,44 @@ def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
             gate_module = module.gate
         elif hasattr(module, "router") and isinstance(module.router, torch.nn.Module):
             gate_module = module.router
+        # DeepSeekV2 可能使用不同的命名
+        elif hasattr(module, "gate_proj") and isinstance(
+            module.gate_proj, torch.nn.Module
+        ):
+            # 检查是否是 MoE 层的一部分（但不是 expert 子模块）
+            if (
+                hasattr(module, "experts")
+                or "mlp" in name.lower()
+                or "moe" in name.lower()
+            ) and ".experts." not in name:
+                gate_module = module.gate_proj
+        # 检查是否有 experts 属性（MoE 层的标志）
+        elif (hasattr(module, "experts") or "moe" in name.lower()) and hasattr(
+            module, "gate"
+        ):
+            if isinstance(module.gate, torch.nn.Module):
+                gate_module = module.gate
 
-        # Fallback: 检查以 'mlp' 结尾的模块
-        if gate_module is None and name.endswith("mlp"):
+        # DeepSeekV2 特定检测：查找包含 "mlp" 或 "moe" 的模块，检查其子模块
+        if gate_module is None:
+            if (
+                "mlp" in name.lower() or "moe" in name.lower()
+            ) and ".experts." not in name:
+                # 检查子模块中是否有 gate 或 router
+                for child_name, child_module in module.named_children():
+                    if "gate" in child_name.lower() or "router" in child_name.lower():
+                        if isinstance(child_module, torch.nn.Module):
+                            gate_module = child_module
+                            break
+                    # 检查是否有 Linear 层作为 gate（DeepSeekV2 可能使用）
+                    if isinstance(child_module, torch.nn.Linear) and (
+                        "gate" in child_name.lower() or "router" in child_name.lower()
+                    ):
+                        gate_module = child_module
+                        break
+
+        # Fallback: 检查以 'mlp' 结尾的模块（但不是 expert 子模块）
+        if gate_module is None and name.endswith("mlp") and ".experts." not in name:
             if hasattr(module, "router") and isinstance(module.router, torch.nn.Module):
                 gate_module = module.router
             elif hasattr(module, "gate") and isinstance(module.gate, torch.nn.Module):
@@ -115,7 +186,7 @@ def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
             hook_recorder = hooks[current_layer_idx]
 
             # 创建 hook 函数
-            def create_hook(recorder, k):
+            def create_hook(recorder, k, shared_experts, exclude_shared):
                 def hook_fn(m, inp, out):
                     try:
                         with torch.no_grad():
@@ -125,10 +196,33 @@ def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
                             else:
                                 logits = out
 
-                            # 获取 top-k 专家
-                            experts = torch.topk(logits, k=k, dim=-1, sorted=True)
+                            # 确保 logits 是浮点数类型
+                            if not logits.dtype.is_floating_point:
+                                logits = logits.float()
+
+                            # 如果排除共享专家，先过滤 logits
+                            if exclude_shared and shared_experts:
+                                # 将共享专家的 logits 设为很小的值，这样它们不会被选中
+                                filtered_logits = logits.clone()
+                                for shared_idx in shared_experts:
+                                    if shared_idx < filtered_logits.shape[-1]:
+                                        filtered_logits[..., shared_idx] = float("-inf")
+                                # 使用过滤后的 logits 获取 top-k
+                                experts = torch.topk(
+                                    filtered_logits, k=k, dim=-1, sorted=True
+                                )
+                            else:
+                                # 获取 top-k 专家
+                                experts = torch.topk(logits, k=k, dim=-1, sorted=True)
+
                             indices = experts.indices
-                            weights = torch.softmax(experts.values, dim=-1)
+                            # 确保 values 是浮点数类型，然后计算 softmax
+                            values = (
+                                experts.values.float()
+                                if not experts.values.dtype.is_floating_point
+                                else experts.values
+                            )
+                            weights = torch.softmax(values, dim=-1)
 
                             recorder.record(indices, weights)
                     except Exception as e:
@@ -137,7 +231,9 @@ def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
                 return hook_fn
 
             handle = gate_module.register_forward_hook(
-                create_hook(hook_recorder, k_val)
+                create_hook(
+                    hook_recorder, k_val, shared_expert_indices, exclude_shared_experts
+                )
             )
             handles.append(handle)
 
@@ -145,10 +241,48 @@ def register_expert_hooks(model, hooks: Dict[int, ExpertHook]):
 
     if layer_idx == 0:
         logger.warning("未找到 MoE 层！请检查模型结构")
+        # 尝试打印模型结构以帮助调试
+        logger.info("正在搜索可能的 MoE 相关模块...")
+        moe_keywords = ["moe", "expert", "router", "gate", "mlp"]
+        found_modules = []
+        for name, module in model.named_modules():
+            name_lower = name.lower()
+            if any(keyword in name_lower for keyword in moe_keywords):
+                found_modules.append((name, type(module).__name__))
+                if len(found_modules) >= 30:
+                    break
+
+        if found_modules:
+            logger.info(f"找到 {len(found_modules)} 个可能相关的模块:")
+            for name, module_type in found_modules[:20]:
+                logger.info(f"  {name}: {module_type}")
+                # 检查是否有 gate/router 属性
+                try:
+                    mod = dict(model.named_modules())[name]
+                    attrs = [
+                        attr
+                        for attr in dir(mod)
+                        if not attr.startswith("_")
+                        and "gate" in attr.lower()
+                        or "router" in attr.lower()
+                    ]
+                    if attrs:
+                        logger.info(f"    可能的属性: {attrs[:5]}")
+                except:
+                    pass
+        else:
+            logger.info("未找到包含 'moe', 'expert', 'router', 'gate', 'mlp' 的模块")
+            logger.info("模型结构（前30个模块）:")
+            for i, (name, module) in enumerate(model.named_modules()):
+                if i >= 30:
+                    break
+                logger.info(f"  {name}: {type(module).__name__}")
     else:
         logger.info(f"共注册 {layer_idx} 个 MoE 层的 hooks")
+        if exclude_shared_experts and shared_expert_indices:
+            logger.info(f"已配置排除共享专家: {shared_expert_indices}")
 
-    return handles
+    return handles, shared_expert_indices
 
 
 def remove_hooks(handles):
@@ -212,7 +346,9 @@ def analyze_and_aggregate(
     # 2. 注册 hooks
     hooks = defaultdict(ExpertHook)
     logger.info("正在注册 hooks...")
-    handles = register_expert_hooks(model, hooks)
+    handles, shared_expert_indices = register_expert_hooks(
+        model, hooks, exclude_shared_experts=True
+    )
 
     if not handles:
         logger.error("未找到任何 MoE 层，退出")
@@ -265,7 +401,23 @@ def analyze_and_aggregate(
         # 生成（触发 hooks）
         try:
             with torch.no_grad():
-                model.generate(**inputs, max_new_tokens=max_new_tokens)
+                # 修复 DynamicCache 兼容性问题：不使用 past_key_values
+                generate_kwargs = {
+                    **inputs,
+                    "max_new_tokens": max_new_tokens,
+                    "use_cache": False,  # 禁用缓存以避免 DynamicCache 兼容性问题
+                }
+                # 如果 pad_token_id 未设置，使用 eos_token_id
+                if "pad_token_id" not in generate_kwargs:
+                    if (
+                        hasattr(tokenizer, "pad_token_id")
+                        and tokenizer.pad_token_id is not None
+                    ):
+                        generate_kwargs["pad_token_id"] = tokenizer.pad_token_id
+                    elif hasattr(tokenizer, "eos_token_id"):
+                        generate_kwargs["pad_token_id"] = tokenizer.eos_token_id
+
+                model.generate(**generate_kwargs)
         except Exception as e:
             logger.warning(f"样本 {idx} 生成失败: {e}")
             continue
@@ -276,14 +428,22 @@ def analyze_and_aggregate(
                 continue
 
             # 合并所有时间步的专家选择
-            all_indices = torch.cat(hook.expert_indices, dim=0)
-            all_indices = all_indices.reshape(-1, all_indices.shape[-1])
+            # 处理不同大小的张量：逐个处理每个时间步的记录
+            for indices_tensor in hook.expert_indices:
+                # 确保 indices_tensor 是 2D 的 (batch_size, k)
+                if indices_tensor.dim() == 1:
+                    indices_tensor = indices_tensor.unsqueeze(0)
+                elif indices_tensor.dim() > 2:
+                    # 如果是 3D 或更高维，reshape 为 2D
+                    indices_tensor = indices_tensor.reshape(
+                        -1, indices_tensor.shape[-1]
+                    )
 
-            # 统计每个专家组合的出现次数并聚合到全局统计
-            for row in all_indices:
-                combo = tuple(sorted(row.tolist()))
-                combo_str = str(combo)
-                aggregated_layers[layer_idx][combo_str] += 1
+                # 统计每个专家组合的出现次数并聚合到全局统计
+                for row in indices_tensor:
+                    combo = tuple(sorted(row.tolist()))
+                    combo_str = str(combo)
+                    aggregated_layers[layer_idx][combo_str] += 1
 
     # 5. 保存聚合结果
     logger.info("正在保存聚合结果...")
