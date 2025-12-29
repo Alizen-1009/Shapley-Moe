@@ -114,6 +114,8 @@ cd ../pruning
 # 使用 Shapley 剪枝，保留 50%（剪枝率从配置读取）
 ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.5
 
+./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley --all-rates
+
 # 批量处理（使用配置中的所有剪枝率）
 ./run_select.sh -m qwen3-30b-a3b --all-datasets -M easyep --all-rates
 
