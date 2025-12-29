@@ -4,14 +4,22 @@ MoE 模型专家剪枝工具
 
 功能：
 1. 加载原始模型
-2. 根据 expert selection JSON 文件，修改 Gate/Router 使其不再选择被剪掉的专家
-3. 可选：将未选中的专家权重置零（节省存储空间）
-4. 保存为 safetensor 格式的完整模型
+2. 根据 expert selection JSON 文件，对被剪掉的专家进行处理
+3. 保存为 safetensor 格式的完整模型
 
 剪枝策略：
 - zero_weights: 将被剪掉的专家权重置零（默认）
 - gate_bias: 给被剪掉的专家在 gate 层添加大负偏置，使其不被选中
 - both: 同时使用两种策略
+- auto: 根据剪枝方法自动选择策略
+
+不同剪枝方法的默认策略：
+- shapley: zero_weights
+- easyep: zero_weights
+- reap: zero_weights
+- gating: zero_weights
+- frequency: zero_weights
+- random: zero_weights
 """
 
 import torch
@@ -19,6 +27,7 @@ import json
 import os
 import argparse
 import logging
+import re
 from typing import Dict, List, Set, Optional, Tuple
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -31,6 +40,50 @@ logger = logging.getLogger(__name__)
 # Gate 偏置的大负数值，使被剪掉的专家选择概率接近 0
 GATE_BIAS_VALUE = -1e9
 
+# 不同剪枝方法对应的默认策略
+# 可以根据需要修改各方法的默认策略
+METHOD_DEFAULT_STRATEGIES = {
+    "shapley": "zero_weights",
+    "easyep": "zero_weights",
+    "reap": "zero_weights",
+    "gating": "zero_weights",
+    "frequency": "zero_weights",
+    "random": "zero_weights",
+}
+
+def detect_method_from_filename(filename: str) -> Optional[str]:
+    """从选择文件名中检测剪枝方法"""
+    basename = os.path.basename(filename).lower()
+    
+    # 检测各种方法
+    if basename.startswith("shapley"):
+        return "shapley"
+    elif basename.startswith("easyep") or "easyep" in basename:
+        return "easyep"
+    elif basename.startswith("reap") or "reap" in basename:
+        return "reap"
+    elif basename.startswith("gating") or "gating" in basename:
+        return "gating"
+    elif basename.startswith("frequency") or "frequency" in basename:
+        return "frequency"
+    elif basename.startswith("random") or "random" in basename:
+        return "random"
+    
+    return None
+
+def get_strategy_for_method(method: Optional[str], user_strategy: str) -> str:
+    """根据方法和用户指定的策略确定最终策略"""
+    # 如果用户明确指定了策略（非 auto），直接使用
+    if user_strategy != "auto":
+        return user_strategy
+    
+    # auto 模式：根据方法自动选择
+    if method and method in METHOD_DEFAULT_STRATEGIES:
+        return METHOD_DEFAULT_STRATEGIES[method]
+    
+    # 默认使用 zero_weights
+    return "zero_weights"
+
 
 class ModelPruner:
     """MoE 模型专家剪枝工具"""
@@ -41,7 +94,7 @@ class ModelPruner:
         selection_json_path: str,
         output_dir: str,
         device_map: str = "auto",
-        pruning_strategy: str = "zero_weights",
+        pruning_strategy: str = "auto",
     ):
         """
         Args:
@@ -50,7 +103,8 @@ class ModelPruner:
             output_dir: 输出模型保存目录
             device_map: 设备映射策略
             pruning_strategy: 剪枝策略
-                - "zero_weights": 将专家权重置零（默认）
+                - "auto": 根据剪枝方法自动选择（默认）
+                - "zero_weights": 将专家权重置零
                 - "gate_bias": 修改 gate 偏置，使被剪掉的专家不会被选中
                 - "both": 同时使用两种策略
         """
@@ -58,7 +112,9 @@ class ModelPruner:
         self.selection_json_path = selection_json_path
         self.output_dir = output_dir
         self.device_map = device_map
-        self.pruning_strategy = pruning_strategy
+        self.user_pruning_strategy = pruning_strategy  # 用户指定的策略
+        self.pruning_strategy = pruning_strategy  # 最终使用的策略（可能被自动调整）
+        self.detected_method = None  # 检测到的剪枝方法
         self.model = None
         self.tokenizer = None
         self.selected_experts: Dict[str, List[int]] = {}
@@ -411,6 +467,7 @@ class ModelPruner:
         pruning_info = {
             "original_model": self.model_path,
             "selection_file": self.selection_json_path,
+            "detected_method": self.detected_method,
             "pruning_strategy": self.pruning_strategy,
             "selected_experts": self.selected_experts,
             "total_layers": len(self.selected_experts),
@@ -429,8 +486,21 @@ class ModelPruner:
         """执行完整的剪枝流程"""
         logger.info("=" * 70)
         logger.info("开始 MoE 模型专家剪枝")
-        logger.info(f"剪枝策略: {self.pruning_strategy}")
         logger.info("=" * 70)
+        
+        # 0. 检测剪枝方法并确定策略
+        self.detected_method = detect_method_from_filename(self.selection_json_path)
+        self.pruning_strategy = get_strategy_for_method(
+            self.detected_method, 
+            self.user_pruning_strategy
+        )
+        
+        if self.detected_method:
+            logger.info(f"检测到剪枝方法: {self.detected_method}")
+        if self.user_pruning_strategy == "auto":
+            logger.info(f"自动选择策略: {self.pruning_strategy}")
+        else:
+            logger.info(f"使用指定策略: {self.pruning_strategy}")
 
         # 1. 加载专家选择
         self.selected_experts = self.load_selection_file()
@@ -492,9 +562,9 @@ def main():
     parser.add_argument(
         "--strategy",
         type=str,
-        default="zero_weights",
-        choices=["zero_weights", "gate_bias", "both"],
-        help="剪枝策略: zero_weights(默认), gate_bias, both",
+        default="auto",
+        choices=["auto", "zero_weights", "gate_bias", "both"],
+        help="剪枝策略: auto(根据方法自动选择), zero_weights, gate_bias, both",
     )
     # 兼容旧参数
     parser.add_argument("--device", type=str, default=None, help="(已废弃)")
