@@ -9,8 +9,8 @@ MoE 模型专家剪枝工具
 4. 保存为 safetensor 格式的完整模型
 
 剪枝策略：
-- gate_bias: 给被剪掉的专家在 gate 层添加大负偏置，使其不被选中（推荐）
-- zero_weights: 将被剪掉的专家权重置零（旧方法，可能导致问题）
+- zero_weights: 将被剪掉的专家权重置零（默认）
+- gate_bias: 给被剪掉的专家在 gate 层添加大负偏置，使其不被选中
 - both: 同时使用两种策略
 """
 
@@ -41,7 +41,7 @@ class ModelPruner:
         selection_json_path: str,
         output_dir: str,
         device_map: str = "auto",
-        pruning_strategy: str = "gate_bias",
+        pruning_strategy: str = "zero_weights",
     ):
         """
         Args:
@@ -50,8 +50,8 @@ class ModelPruner:
             output_dir: 输出模型保存目录
             device_map: 设备映射策略
             pruning_strategy: 剪枝策略
-                - "gate_bias": 修改 gate 偏置（推荐，确保被剪掉的专家不会被选中）
-                - "zero_weights": 将专家权重置零（旧方法）
+                - "zero_weights": 将专家权重置零（默认）
+                - "gate_bias": 修改 gate 偏置，使被剪掉的专家不会被选中
                 - "both": 同时使用两种策略
         """
         self.model_path = model_path
@@ -453,10 +453,10 @@ class ModelPruner:
         logger.info("=" * 70)
         logger.info(f"剪枝后的模型已保存到: {self.output_dir}")
         
-        if self.pruning_strategy == "gate_bias":
+        if self.pruning_strategy == "zero_weights":
+            logger.info("✓ 使用 zero_weights 策略：专家权重已置零")
+        elif self.pruning_strategy == "gate_bias":
             logger.info("✓ 使用 gate_bias 策略：被剪掉的专家将不会被 router 选中")
-        elif self.pruning_strategy == "zero_weights":
-            logger.info("⚠ 使用 zero_weights 策略：专家权重已置零，但 router 仍可能选中它们")
         else:
             logger.info("✓ 使用 both 策略：gate 已修改且权重已置零")
 
@@ -492,9 +492,9 @@ def main():
     parser.add_argument(
         "--strategy",
         type=str,
-        default="gate_bias",
-        choices=["gate_bias", "zero_weights", "both"],
-        help="剪枝策略: gate_bias(推荐), zero_weights, both",
+        default="zero_weights",
+        choices=["zero_weights", "gate_bias", "both"],
+        help="剪枝策略: zero_weights(默认), gate_bias, both",
     )
     # 兼容旧参数
     parser.add_argument("--device", type=str, default=None, help="(已废弃)")
