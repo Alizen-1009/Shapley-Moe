@@ -46,7 +46,8 @@ shapley-moe/
 │   │   ├── shapley_values/             # Shapley 值
 │   │   │   └── {dataset}_shapley.csv
 │   │   ├── selected_experts/           # 选中的专家
-│   │   │   ├── {method}_{dataset}_rate{XX}.json
+│   │   │   ├── shapley_{strategy}_{dataset}_rate{XX}.json
+│   │   │   ├── {method}_{dataset}_rate{XX}.json  # 其他方法
 │   │   │   └── ...
 │   │   └── eval/                       # 评测结果
 │   │       └── {method}_{dataset}_rate{XX}/
@@ -84,15 +85,22 @@ shapley-moe/
 - `random` - 随机剪枝（基线）
 
 ### 剪枝率
-- `rate25` - 保留 25%
-- `rate50` - 保留 50%
-- `rate75` - 保留 75%
+- `rate0_8` - 保留 80%
+- `rate0_6` - 保留 60%
 
 ### 文件命名
 - 激活统计: `{dataset}_{type}.json`
 - Shapley 值: `{dataset}_shapley.csv`
-- 选中专家: `{method}_{dataset}_rate{XX}.json`
+- 选中专家:
+  - Shapley: `shapley_{strategy}_{dataset}_rate{XX}.json`
+  - 其他方法: `{method}_{dataset}_rate{XX}.json`
 - 剪枝模型: `{model}_{method}_rate{XX}/`
+
+### Shapley 策略
+- `alpha_per_layer` - 每层 Alpha 覆盖（推荐）
+- `alpha_global` - 全局 Alpha 覆盖
+- `topk_per_layer` - 每层 Top-K
+- `topk_global` - 全局 Top-K
 
 ## 工作流程
 
