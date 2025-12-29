@@ -217,7 +217,7 @@ if [ "$ALL_METHODS" = true ]; then
         METHODS=($CONFIG_METHODS)
         log_info "从配置文件读取剪枝方法: ${METHODS[*]}"
     else
-        METHODS=("shapley" "easyep" "reap" "gating" "frequency" "random")
+    METHODS=("shapley" "easyep" "reap" "gating" "frequency" "random")
         log_warning "配置文件中未找到剪枝方法，使用默认值"
     fi
 else
