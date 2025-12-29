@@ -1,0 +1,29 @@
+# =============================================================================
+# 模型配置
+# =============================================================================
+
+models:
+  qwen3-30b-a3b:
+    path: /root/yuhao/hf_models/qwen3-30b-a3b
+    num_experts: 128
+    num_experts_per_tok: 8
+    type: qwen3
+    
+  gpt-oss-20b:
+    path: /root/yuhao/hf_models/gpt-oss-20b
+    num_experts: 32
+    num_experts_per_tok: 4
+    type: gpt-oss
+    
+  deepseekv2-lite-coder:
+    path: /root/yuhao/hf_models/deepseekv2-lite-coder
+    num_experts: 64
+    num_experts_per_tok: 6
+    type: deepseek
+    
+# 模型类型到专家模块的映射
+moe_module_patterns:
+  qwen3: "model.layers.*.mlp.experts"
+  gpt-oss: "model.layers.*.feed_forward.experts"
+  deepseek: "model.layers.*.mlp.experts"
+

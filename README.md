@@ -44,7 +44,8 @@ shapley-moe/
 │   │   ├── shapley_values/             # Shapley 值
 │   │   │   └── {dataset}_shapley.csv
 │   │   └── selected_experts/           # 选中的专家
-│   │       ├── {method}_{dataset}_rate{XX}.json
+│   │       ├── shapley_{strategy}_{dataset}_rate{XX}.json
+│   │       ├── {method}_{dataset}_rate{XX}.json  # 其他方法
 │   │       └── ...
 │   └── ...
 │
@@ -58,11 +59,28 @@ shapley-moe/
 
 ## 🚀 快速开始
 
+### 0. 配置（推荐先修改）
+
+所有脚本优先从 `configs/` 目录读取配置：
+
+```bash
+# 修改模型路径
+vim configs/models.yaml
+
+# 修改实验参数（剪枝率、数据集等）
+vim configs/experiments.yaml
+```
+
 ### 1. 数据准备
 
 ```bash
 cd data
-./run_download.sh
+
+# 下载单个数据集
+./run_download.sh gsm8k 25
+
+# 下载配置中的所有数据集
+./run_download.sh --all
 ```
 
 ### 2. 收集激活信息
@@ -72,17 +90,20 @@ cd data
 ```bash
 cd analysis
 
-# 处理单个数据集
-./run_collect.sh --model /path/to/model --data ../data/calibration/gsm8k_25.json
+# 使用模型名称（自动从配置读取路径）
+./run_collect.sh -m qwen3-30b-a3b --all
 
-# 批量处理所有数据集
-./run_collect.sh --model /path/to/model --all
+# 或使用完整路径
+./run_collect.sh -m /path/to/model --data ../data/calibration/gsm8k_25.json
+
+# 查看配置中的可用模型
+./run_collect.sh --list-models
 ```
 
 ### 3. 计算 Shapley 值（可选）
 
 ```bash
-./run_calc_shapley.sh --model MODEL_NAME
+./run_calc_shapley.sh -m MODEL_NAME
 ```
 
 ### 4. 专家选择
@@ -90,11 +111,14 @@ cd analysis
 ```bash
 cd ../pruning
 
-# 使用 Shapley 剪枝，保留 50%
+# 使用 Shapley 剪枝，保留 50%（剪枝率从配置读取）
 ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.5
 
-# 批量处理
+# 批量处理（使用配置中的所有剪枝率）
 ./run_select.sh -m qwen3-30b-a3b --all-datasets -M easyep --all-rates
+
+# 使用配置中的所有方法
+./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 --all-methods --all-rates
 ```
 
 ### 5. 保存剪枝模型
@@ -102,16 +126,26 @@ cd ../pruning
 ```bash
 python save_model.py \
     --model /path/to/original/model \
-    --selection ../results/{model}/selected_experts/{method}_{dataset}_rate50.json \
-    --output ../models/{model}_{method}_rate50
+    --selection ../results/{model}/selected_experts/{method}_{dataset}_rate0_5.json \
+    --output ../models/{model}_{method}_rate0_5
 ```
 
 ### 6. 评测
 
 ```bash
 cd ../evaluation
-./vllm_server.sh  # 启动模型服务
+
+# 启动模型服务（使用模型名称，自动读取配置中的路径）
+./vllm-server.sh qwen3-30b-a3b
+
+# 或指定完整路径
+./vllm-server.sh /path/to/model -p 8801
+
+# 运行评测（数据集从配置读取）
 python run_evalscope.py
+
+# 查看可用数据集
+python run_evalscope.py --list-datasets
 ```
 
 ## 📊 剪枝方法
@@ -158,12 +192,63 @@ python pruning/methods/select_by_shapley.py \
 - **模型**: `qwen3-30b-a3b`, `gpt-oss-20b`, `deepseekv2-lite-coder`
 - **数据集**: `{name}_{samples}` 如 `gsm8k_25`
 - **剪枝方法**: `shapley`, `easyep`, `reap`, `gating`, `frequency`, `random`
-- **剪枝率**: `rate25`, `rate50`, `rate75` (保留比例)
+- **Shapley 策略**: `alpha_per_layer`, `alpha_global`, `topk_per_layer`, `topk_global`
+- **剪枝率**: `rate0_8`, `rate0_6` (保留比例，如 0.8 表示保留 80%)
+- **选中专家文件**:
+  - Shapley: `shapley_{strategy}_{dataset}_rate{XX}.json`
+  - 其他方法: `{method}_{dataset}_rate{XX}.json`
 
 ## 🔧 配置
 
-配置文件位于 `configs/` 目录：
+配置文件位于 `configs/` 目录，**所有脚本优先从配置文件读取信息**：
 
-- `models.yaml`: 模型路径和专家数量
-- `experiments.yaml`: 实验配置（数据集、剪枝率等）
+### models.yaml - 模型配置
+
+```yaml
+models:
+  qwen3-30b-a3b:
+    path: /path/to/qwen3-30b-a3b    # 模型路径
+    num_experts: 128                 # 专家总数
+    num_experts_per_tok: 8           # 每 token 激活专家数
+    type: qwen3                      # 模型类型
+```
+
+### experiments.yaml - 实验配置
+
+```yaml
+# 数据集列表
+datasets:
+  - humaneval_25
+  - gsm8k_25
+  - ...
+
+# 剪枝率（保留比例）
+pruning_rates:
+  - 0.80   # 保留 80%
+  - 0.60   # 保留 60%
+
+# 剪枝方法
+pruning_methods:
+  - shapley
+  - easyep
+  - ...
+
+# 默认值
+defaults:
+  pruning_rate: 0.5
+  pruning_method: shapley
+  shapley_strategy: alpha_per_layer
+  max_new_tokens: 512
+  eval_port: 8801
+```
+
+### 脚本如何使用配置
+
+| 脚本 | 读取的配置 |
+|------|-----------|
+| `run_collect.sh` | 模型路径、max_new_tokens、device |
+| `run_select.sh` | 剪枝率、剪枝方法、Shapley 策略 |
+| `run_download.sh` | 数据集列表 |
+| `vllm-server.sh` | 模型路径、eval_port |
+| `run_evalscope.py` | 评测数据集、batch_size、timeout |
 
