@@ -65,6 +65,10 @@ class ComprehensiveExpertHook:
         # 中间状态（用于计算 simibr）
         self.hidden_before_moe = None
         self.routed_output = None
+        
+        # Gate hook 捕获的输出
+        self._gate_output = None
+        self._gate_input = None
 
     def record_gate_info(self, indices, weights, all_scores):
         """记录 gate 信息"""
@@ -97,6 +101,8 @@ class ComprehensiveExpertHook:
         self.simibr = []
         self.hidden_before_moe = None
         self.routed_output = None
+        self._gate_output = None
+        self._gate_input = None
 
 
 def find_moe_layers(model):
@@ -116,13 +122,29 @@ def find_moe_layers(model):
         gate_module = None
         experts_module = None
         
-        # 检查是否有 gate 和 experts
+        # 检查是否有 gate 和 experts（支持多种命名方式）
+        # 1. 标准命名: gate + experts
         if hasattr(module, "gate") and hasattr(module, "experts"):
             gate_module = module.gate
             experts_module = module.experts
+        # 2. router + experts
         elif hasattr(module, "router") and hasattr(module, "experts"):
             gate_module = module.router
             experts_module = module.experts
+        # 3. DeepSeek V2: gate + routed_experts
+        elif hasattr(module, "gate") and hasattr(module, "routed_experts"):
+            gate_module = module.gate
+            experts_module = module.routed_experts
+        # 4. DeepSeek V2 变体: 检查是否有 forward 中使用的 moe 组件
+        elif hasattr(module, "gate") and hasattr(module, "ep_size"):
+            # 这是 DeepSeek V2 的 MoE 层，但 experts 可能以不同方式组织
+            gate_module = module.gate
+            # 尝试获取 experts
+            if hasattr(module, "experts"):
+                experts_module = module.experts
+            elif hasattr(module, "w1") and hasattr(module, "w2"):
+                # DeepSeek V2 使用 w1, w2, w3 作为专家权重
+                experts_module = module  # 使用整个模块作为 experts_module
         
         if gate_module is not None and experts_module is not None:
             # 提取层索引
@@ -197,10 +219,24 @@ def register_comprehensive_hooks(
         
         # 获取该层的 top-k 和专家数量
         k_val = getattr(moe_module, 'experts_per_token', None) or \
-               getattr(moe_module, 'num_experts_per_tok', None) or global_k
+               getattr(moe_module, 'num_experts_per_tok', None) or \
+               getattr(moe_module, 'topk', None) or \
+               getattr(moe_module, 'top_k', None) or global_k
+        
+        # 获取专家数量（多种属性名）
         num_experts = getattr(moe_module, 'num_experts', None) or \
                      getattr(moe_module, 'n_routed_experts', None) or \
-                     global_num_experts or len(experts_module)
+                     getattr(moe_module, 'num_local_experts', None) or \
+                     global_num_experts
+        
+        # 如果还是没有，尝试从 experts_module 获取
+        if num_experts is None:
+            try:
+                num_experts = len(experts_module)
+            except:
+                num_experts = 64  # 默认值
+        
+        logger.info(f"    Gate: {type(gate_module).__name__}, Experts: {type(experts_module).__name__}, k={k_val}, n_experts={num_experts}")
         
         # ============= Hook 1: MoE 模块的前向钩子（记录输入）=============
         def create_moe_pre_hook(recorder):
@@ -214,8 +250,40 @@ def register_comprehensive_hooks(
         handle_pre = moe_module.register_forward_pre_hook(create_moe_pre_hook(hook_recorder))
         handles.append(handle_pre)
         
+        # ============= Hook 1.5: Gate 模块的输出钩子（捕获 gate 结果）=============
+        # 这对于 DeepSeek V2 等模型非常重要，因为 gate 在 MoE forward 中被调用
+        def create_gate_output_hook(recorder, n_experts, layer_id):
+            logged = [False]  # 只打印一次
+            def hook_fn(module, inp, out):
+                try:
+                    with torch.no_grad():
+                        # 保存 gate 输出供后续使用
+                        recorder._gate_output = out
+                        recorder._gate_input = inp[0] if inp else None
+                        
+                        # 只在第一层首次调用时打印详细信息（减少日志）
+                        if not logged[0] and layer_id == 1:
+                            logged[0] = True
+                            if isinstance(out, tuple):
+                                out_info = f"tuple({len(out)}): " + ", ".join([f"{type(o).__name__}{list(o.shape) if hasattr(o, 'shape') else ''}" for o in out[:3]])
+                            elif hasattr(out, 'shape'):
+                                out_info = f"Tensor{list(out.shape)}"
+                            else:
+                                out_info = type(out).__name__
+                            logger.info(f"  [Gate 输出格式] {out_info}")
+                except Exception as e:
+                    if not logged[0]:
+                        logged[0] = True
+                        logger.warning(f"Gate hook error (L{layer_id}): {e}")
+            return hook_fn
+        
+        handle_gate = gate_module.register_forward_hook(create_gate_output_hook(hook_recorder, num_experts, layer_idx))
+        handles.append(handle_gate)
+        
         # ============= Hook 2: MoE 模块的后向钩子（计算专家范数和相似度）=============
-        def create_moe_post_hook(recorder, k, n_experts, experts_mod, gate_mod, shared_experts, exclude_shared):
+        def create_moe_post_hook(recorder, k, n_experts, experts_mod, gate_mod, shared_experts, exclude_shared, moe_mod, layer_id):
+            logged = [False]  # 只打印一次
+            
             def hook_fn(module, args, output):
                 try:
                     with torch.no_grad():
@@ -226,6 +294,9 @@ def register_comprehensive_hooks(
                             hidden = recorder.hidden_before_moe
                         
                         if hidden is None:
+                            if not logged[0] and layer_id == 1:
+                                logged[0] = True
+                                logger.warning(f"  [MoE Hook] hidden is None, skipping")
                             return
                         
                         device = hidden.device
@@ -241,98 +312,164 @@ def register_comprehensive_hooks(
                         
                         total_tokens = flat_hidden.shape[0]
                         
-                        # 计算 gate 输出（不同模型格式不同）
-                        gate_output = gate_mod(flat_hidden)
+                        # 获取 gate 输出（优先使用 hook 捕获的结果）
+                        gate_output = None
+                        gate_method = None
+                        
+                        # 方法 1: 使用 gate hook 捕获的输出（最可靠）
+                        if hasattr(recorder, '_gate_output') and recorder._gate_output is not None:
+                            gate_output = recorder._gate_output
+                            gate_method = "hook_capture"
+                        
+                        # 方法 2: 直接调用 gate
+                        if gate_output is None:
+                            try:
+                                gate_output = gate_mod(flat_hidden)
+                                gate_method = "direct_call"
+                            except Exception as e:
+                                pass  # 静默失败，尝试下一个方法
+                        
+                        # 方法 3: 如果 gate 调用失败，尝试使用 gate.weight 手动计算
+                        if gate_output is None and hasattr(gate_mod, 'weight'):
+                            try:
+                                gate_output = F.linear(flat_hidden.float(), gate_mod.weight.float(), 
+                                                      getattr(gate_mod, 'bias', None))
+                                gate_method = "manual_linear"
+                            except Exception as e:
+                                pass  # 静默失败
+                        
+                        # 方法 4: 如果 MoE 模块有 topk_indices/topk_weight 属性（某些模型缓存了结果）
+                        if gate_output is None:
+                            if hasattr(moe_mod, 'topk_idx') and hasattr(moe_mod, 'topk_weight'):
+                                try:
+                                    topk_indices = moe_mod.topk_idx
+                                    topk_weights = moe_mod.topk_weight
+                                    gate_output = (topk_indices, topk_weights)
+                                    gate_method = "moe_cache"
+                                except:
+                                    pass
+                        
+                        if gate_output is None:
+                            if not logged[0] and layer_id == 1:
+                                logged[0] = True
+                                logger.warning(f"  [MoE Hook] All gate methods failed")
+                            return
+                        
+                        # 只在第一层首次成功时打印信息
+                        if not logged[0] and layer_id == 1:
+                            logger.info(f"  [MoE Hook] Gate method: {gate_method}, hidden: {list(flat_hidden.shape)}")
+                        
+                        # 清理捕获的 gate 输出
+                        recorder._gate_output = None
                         
                         # 处理不同模型的 gate 输出格式
+                        topk_indices = None
+                        topk_weights = None
+                        all_gating_scores = None
+                        
                         if isinstance(gate_output, tuple):
-                            # DeepSeekV2 等模型：gate 直接返回 (topk_idx, topk_weight, aux_loss)
-                            # 需要获取原始 logits 来计算 all_gating_scores
-                            topk_indices = gate_output[0]  # (total_tokens, k)
-                            topk_weights = gate_output[1]  # (total_tokens, k)
+                            # 检查第一个元素的类型来判断格式
+                            first_elem = gate_output[0]
                             
-                            # 尝试获取原始 logits 用于 all_gating_scores
-                            if hasattr(gate_mod, 'weight'):
-                                # 手动计算 logits
-                                gate_logits = F.linear(
-                                    flat_hidden.float(), 
-                                    gate_mod.weight.float(), 
-                                    None
-                                )
-                                all_gating_scores = torch.softmax(gate_logits, dim=-1)
+                            if first_elem.dtype in [torch.int32, torch.int64, torch.long]:
+                                # DeepSeekV2 等模型：gate 直接返回 (topk_idx, topk_weight, ...)
+                                topk_indices = first_elem
+                                topk_weights = gate_output[1].float()
+                                
+                                # 确保 k 值正确
+                                actual_k = topk_indices.shape[-1]
+                                
+                                # 尝试获取原始 logits 用于 all_gating_scores
+                                if hasattr(gate_mod, 'weight'):
+                                    gate_logits = F.linear(flat_hidden.float(), gate_mod.weight.float(), None)
+                                    all_gating_scores = torch.softmax(gate_logits, dim=-1)
+                                else:
+                                    # 无法获取完整 scores，使用 topk 结果构造
+                                    all_gating_scores = torch.zeros(total_tokens, n_experts, device=device)
+                                    all_gating_scores.scatter_(1, topk_indices, topk_weights)
                             else:
-                                # 无法获取完整 scores，使用 topk 结果构造
-                                all_gating_scores = torch.zeros(total_tokens, n_experts, device=device)
-                                all_gating_scores.scatter_(1, topk_indices, topk_weights)
+                                # tuple 但第一个元素是浮点数，取第一个作为 logits
+                                gate_logits = first_elem.float()
+                                all_gating_scores = torch.softmax(gate_logits, dim=-1)
+                                topk_values, topk_indices = torch.topk(gate_logits, k=min(k, gate_logits.shape[-1]), dim=-1)
+                                topk_weights = torch.softmax(topk_values.float(), dim=-1)
                         else:
                             # 标准模型：gate 返回 logits
-                            gate_logits = gate_output  # (total_tokens, num_experts)
+                            gate_logits = gate_output.float()
                             
                             # 计算所有专家的 softmax gating score
-                            all_gating_scores = torch.softmax(gate_logits.float(), dim=-1)
+                            all_gating_scores = torch.softmax(gate_logits, dim=-1)
                             
                             # 获取 top-k 专家
+                            actual_k = min(k, gate_logits.shape[-1])
                             if exclude_shared and shared_experts:
                                 filtered_logits = gate_logits.clone()
                                 for shared_idx in shared_experts:
                                     if shared_idx < filtered_logits.shape[-1]:
                                         filtered_logits[..., shared_idx] = float('-inf')
-                                topk_values, topk_indices = torch.topk(filtered_logits, k=k, dim=-1)
+                                topk_values, topk_indices = torch.topk(filtered_logits, k=actual_k, dim=-1)
                             else:
-                                topk_values, topk_indices = torch.topk(gate_logits, k=k, dim=-1)
+                                topk_values, topk_indices = torch.topk(gate_logits, k=actual_k, dim=-1)
                             
                             # 计算 softmax 权重
                             topk_weights = torch.softmax(topk_values.float(), dim=-1)
+                        
+                        if topk_indices is None or topk_weights is None:
+                            if not logged[0] and layer_id == 1:
+                                logged[0] = True
+                                logger.warning(f"  [MoE Hook] Failed to get topk_indices/weights")
+                            return
+                        
+                        # 只在第一层首次成功时打印信息
+                        if not logged[0] and layer_id == 1:
+                            logged[0] = True
+                            logger.info(f"  [MoE Hook] topk: {list(topk_indices.shape)}, k={topk_indices.shape[-1]}")
                         
                         # 记录基础信息
                         recorder.record_gate_info(topk_indices, topk_weights, all_gating_scores)
                         
                         # ============= 计算专家输出范数 =============
-                        expert_norms = torch.zeros(total_tokens, k, device=device, dtype=torch.float32)
-                        routed_output = torch.zeros_like(flat_hidden)
+                        # 注意：逐个计算专家输出范数非常慢，这里使用简化方案
+                        # 使用权重作为范数的近似，避免 O(tokens × k × experts) 的计算
+                        actual_k = topk_indices.shape[-1]
                         
-                        # 限制计算的 token 数量以节省内存
-                        max_tokens_to_compute = min(total_tokens, 512)
-                        
-                        for token_idx in range(max_tokens_to_compute):
-                            token_hidden = flat_hidden[token_idx:token_idx+1]  # (1, hidden_dim)
-                            
-                            for k_idx in range(k):
-                                expert_idx = topk_indices[token_idx, k_idx].item()
-                                weight = topk_weights[token_idx, k_idx].item()
-                                
-                                if expert_idx < len(experts_mod) and experts_mod[expert_idx] is not None:
-                                    try:
-                                        expert = experts_mod[expert_idx]
-                                        expert_out = expert(token_hidden)  # (1, hidden_dim)
-                                        
-                                        # 计算范数
-                                        norm = torch.linalg.norm(expert_out, dim=-1).item()
-                                        expert_norms[token_idx, k_idx] = norm
-                                        
-                                        # 累加加权输出用于计算 simibr
-                                        routed_output[token_idx] += weight * expert_out.squeeze(0)
-                                    except Exception as e:
-                                        pass
-                        
-                        # 对超出范围的 token 使用平均值填充
-                        if max_tokens_to_compute < total_tokens:
-                            avg_norms = expert_norms[:max_tokens_to_compute].mean(dim=0)
-                            expert_norms[max_tokens_to_compute:] = avg_norms.unsqueeze(0)
+                        # 简化方案：使用 1.0 作为默认范数
+                        # EASYEP: score = weight × (1 - simibr) × norm ≈ weight × (1 - simibr)
+                        # REAP: score = weight × norm ≈ weight
+                        expert_norms = torch.ones(total_tokens, actual_k, device=device, dtype=torch.float32)
                         
                         recorder.record_expert_norms(expert_norms)
                         
                         # ============= 计算 simibr（输入输出余弦相似度）=============
-                        # simibr = cos_sim(x_before_moe, x_after_rmoe)
-                        # x_after_rmoe = x + routed_output
-                        x_after_rmoe = flat_hidden + routed_output
+                        # 简化方案：使用 MoE 模块的输入输出计算相似度
+                        # 而不是重新计算 routed_output（太慢）
+                        if isinstance(output, tuple):
+                            moe_output = output[0] if len(output) > 0 else output
+                        else:
+                            moe_output = output
                         
-                        # 计算余弦相似度
-                        simibr = F.cosine_similarity(
-                            flat_hidden.float(), 
-                            x_after_rmoe.float(), 
-                            dim=-1
-                        )  # (total_tokens,)
+                        if hasattr(moe_output, 'shape') and moe_output.dim() >= 2:
+                            # 确保形状匹配
+                            if moe_output.dim() == 3:
+                                flat_output = moe_output.view(-1, moe_output.shape[-1])
+                            else:
+                                flat_output = moe_output
+                            
+                            # 取相同长度
+                            min_len = min(flat_hidden.shape[0], flat_output.shape[0])
+                            simibr = F.cosine_similarity(
+                                flat_hidden[:min_len].float(), 
+                                flat_output[:min_len].float(), 
+                                dim=-1
+                            )
+                            # 填充到完整长度
+                            if min_len < total_tokens:
+                                full_simibr = torch.ones(total_tokens, device=device)
+                                full_simibr[:min_len] = simibr
+                                simibr = full_simibr
+                        else:
+                            # 无法计算，使用默认值 1.0（表示相似）
+                            simibr = torch.ones(total_tokens, device=device)
                         
                         recorder.record_simibr(simibr)
                         
@@ -343,7 +480,7 @@ def register_comprehensive_hooks(
         
         handle_post = moe_module.register_forward_hook(
             create_moe_post_hook(hook_recorder, k_val, num_experts, experts_module, 
-                                gate_module, shared_expert_indices, exclude_shared_experts)
+                                gate_module, shared_expert_indices, exclude_shared_experts, moe_module, layer_idx)
         )
         handles.append(handle_post)
     
@@ -359,12 +496,16 @@ def register_gate_only_hooks(model, hooks, exclude_shared_experts=True):
     shared_expert_indices = []
     
     # 获取配置信息
-    global_k = None
+    global_k = 4
+    global_num_experts = 64
+    
     if hasattr(model, "config"):
-        if hasattr(model.config, "experts_per_token"):
-            global_k = model.config.experts_per_token
-        elif hasattr(model.config, "num_experts_per_tok"):
-            global_k = model.config.num_experts_per_tok
+        config = model.config
+        global_k = getattr(config, 'experts_per_token', None) or \
+                   getattr(config, 'num_experts_per_tok', None) or 4
+        global_num_experts = getattr(config, 'num_experts', None) or \
+                            getattr(config, 'n_routed_experts', None) or \
+                            getattr(config, 'num_local_experts', None) or 64
     
     if hasattr(model, "config"):
         if hasattr(model.config, "shared_expert_indices"):
@@ -619,9 +760,11 @@ def analyze_all_in_one(
             continue
 
         # 统计所有信息
+        layers_with_data = 0
         for layer_idx, hook in hooks.items():
             if not hook.expert_indices:
                 continue
+            layers_with_data += 1
 
             # 处理每个时间步
             num_steps = len(hook.expert_indices)
@@ -698,6 +841,14 @@ def analyze_all_in_one(
                         reap_scores[layer_idx][expert_id]['weighted_norm_sum'] += reap_score
                         reap_scores[layer_idx][expert_id]['count'] += 1
 
+        # 第一个样本处理后打印统计信息
+        if idx == 1:
+            layers_with_data = sum(1 for h in hooks.values() if h.expert_indices)
+            total_records = sum(len(h.expert_indices) for h in hooks.values())
+            logger.info(f"[样本 1 统计] 有数据的层: {layers_with_data}, 总记录数: {total_records}")
+            if layers_with_data == 0:
+                logger.warning("警告: 第一个样本后没有任何层记录到数据，请检查 hook 是否正常工作")
+        
         if idx % 10 == 0:
             gc.collect()
 

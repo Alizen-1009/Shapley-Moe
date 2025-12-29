@@ -197,22 +197,22 @@ else
     fi
     
     echo "============================================================================="
-    echo "下载数据集: $DATASET"
-    echo "样本数量: $NUM_SAMPLES"
-    if [ -n "$WITH_ANSWERS" ]; then
-        echo "包含答案: 是"
-    fi
+echo "下载数据集: $DATASET"
+echo "样本数量: $NUM_SAMPLES"
+if [ -n "$WITH_ANSWERS" ]; then
+    echo "包含答案: 是"
+fi
     echo "============================================================================="
-    echo ""
-    
-    # 运行下载
-    python3 download_dataset.py \
-        --dataset "$DATASET" \
-        --num_samples "$NUM_SAMPLES" \
-        $WITH_ANSWERS
-    
-    echo ""
+echo ""
+
+# 运行下载
+python3 download_dataset.py \
+    --dataset "$DATASET" \
+    --num_samples "$NUM_SAMPLES" \
+    $WITH_ANSWERS
+
+echo ""
     echo "============================================================================="
-    echo "✓ 完成！"
+echo "✓ 完成！"
     echo "============================================================================="
 fi

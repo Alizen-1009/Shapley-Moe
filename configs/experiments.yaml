@@ -56,7 +56,7 @@ defaults:
   # 推理相关
   max_new_tokens: 512
   device: auto
-  
+
   # 评测相关
   eval_batch_size: 128
   eval_timeout: 60000
