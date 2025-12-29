@@ -124,10 +124,20 @@ cd ../pruning
 ### 5. 保存剪枝模型
 
 ```bash
-python save_model.py \
-    --model /path/to/original/model \
-    --selection ../results/{model}/selected_experts/{method}_{dataset}_rate0_5.json \
-    --output ../models/{model}_{method}_rate0_5
+cd ../pruning
+
+# 指定模型、数据集、剪枝率（自动查找对应的选择文件）
+./run_prune.sh -m qwen3-30b-a3b -d gsm8k_25 -r 0.8
+
+# 使用其他方法
+./run_prune.sh -m gpt-oss-20b -d arc_easy_25 -M easyep -r 0.6
+
+# 参数说明
+#   -m MODEL     模型名称
+#   -d DATASET   数据集名称
+#   -M METHOD    剪枝方法（默认: shapley）
+#   -s STRATEGY  Shapley策略（默认: alpha_per_layer）
+#   -r RATE      剪枝率（默认: 0.8）
 ```
 
 ### 6. 评测

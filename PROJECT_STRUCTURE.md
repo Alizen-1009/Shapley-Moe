@@ -28,8 +28,8 @@ shapley-moe/
 │   │   ├── select_by_frequency.py      # 激活频率剪枝
 │   │   └── select_by_random.py         # 随机剪枝（基线）
 │   ├── save_model.py                   # 保存剪枝后模型
-│   ├── run_select.sh                   # 批量专家选择
-│   └── run_prune.sh                    # 批量模型剪枝
+│   ├── run_select.sh                   # 批量专家选择（从配置读取）
+│   └── run_prune.sh                    # 批量模型剪枝（从配置读取）
 │
 ├── evaluation/                         # 评测脚本
 │   ├── run_evalscope.py
