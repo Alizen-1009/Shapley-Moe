@@ -26,7 +26,7 @@ METHOD="shapley"
 STRATEGY="alpha_per_layer"
 RATE="0.8"
 DEVICE_MAP="auto"
-PRUNE_STRATEGY="gate_bias"  # 剪枝策略: gate_bias(推荐), zero_weights, both
+PRUNE_STRATEGY="zero_weights"  # 剪枝策略: zero_weights(默认), gate_bias, both
 OUTPUT_DIR=""  # 自定义输出目录（可选）
 
 show_help() {
@@ -38,9 +38,9 @@ show_help() {
     echo "  -M METHOD          剪枝方法 (默认: shapley)"
     echo "  -s STRATEGY        Shapley策略 (默认: alpha_per_layer)"
     echo "  -r RATE            保留率 (默认: 0.8)"
-    echo "  -p PRUNE_STRATEGY  剪枝策略 (默认: gate_bias)"
-    echo "                     - gate_bias: 修改gate使被剪掉的专家不被选中 (推荐)"
-    echo "                     - zero_weights: 将专家权重置零 (旧方法)"
+    echo "  -p PRUNE_STRATEGY  剪枝策略 (默认: zero_weights)"
+    echo "                     - zero_weights: 将专家权重置零 (默认)"
+    echo "                     - gate_bias: 修改gate使被剪掉的专家不被选中"
     echo "                     - both: 同时使用两种策略"
     echo "  -o OUTPUT_DIR      自定义输出目录 (可选，默认保存在原模型同级目录)"
     echo "  --device MAP       设备映射 (默认: auto)"
