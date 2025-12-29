@@ -54,7 +54,7 @@ defaults:
   shapley_strategy: alpha_per_layer
   
   # 推理相关
-  max_new_tokens: 512
+  max_new_tokens: 64
   device: auto
 
   # 评测相关

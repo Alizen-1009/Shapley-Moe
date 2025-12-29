@@ -746,7 +746,7 @@ def analyze_all_in_one(
                 generate_kwargs = {
                     **inputs,
                     "max_new_tokens": max_new_tokens,
-                    "use_cache": False,
+                    "use_cache": False,  # DeepSeek V2 的 cache 不兼容，禁用
                 }
                 if "pad_token_id" not in generate_kwargs:
                     if hasattr(tokenizer, "pad_token_id") and tokenizer.pad_token_id is not None:
@@ -996,6 +996,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default=None, help="输出目录")
     parser.add_argument("--max_new_tokens", type=int, default=512, help="最大生成token数")
     parser.add_argument("--device", type=str, default="auto", help="设备")
+    parser.add_argument("--batch_size", type=int, default=1, help="批处理大小（增大可提升速度）")
     parser.add_argument("--force", "-f", action="store_true", help="强制重新计算")
 
     args = parser.parse_args()
