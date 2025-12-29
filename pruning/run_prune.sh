@@ -27,6 +27,7 @@ STRATEGY="alpha_per_layer"
 RATE="0.8"
 DEVICE_MAP="auto"
 PRUNE_STRATEGY="gate_bias"  # 剪枝策略: gate_bias(推荐), zero_weights, both
+OUTPUT_DIR=""  # 自定义输出目录（可选）
 
 show_help() {
     echo "用法: $0 -m MODEL -d DATASET [-M METHOD] [-s STRATEGY] [-r RATE] [-p PRUNE_STRATEGY]"
@@ -41,11 +42,16 @@ show_help() {
     echo "                     - gate_bias: 修改gate使被剪掉的专家不被选中 (推荐)"
     echo "                     - zero_weights: 将专家权重置零 (旧方法)"
     echo "                     - both: 同时使用两种策略"
+    echo "  -o OUTPUT_DIR      自定义输出目录 (可选，默认保存在原模型同级目录)"
     echo "  --device MAP       设备映射 (默认: auto)"
     echo ""
     echo "示例:"
     echo "  $0 -m qwen3-30b-a3b -d gsm8k_25 -r 0.8"
     echo "  $0 -m gpt-oss-20b -d arc_easy_25 -M easyep -r 0.6 -p both"
+    echo ""
+    echo "输出目录示例:"
+    echo "  原模型: /root/hf_models/deepseekv2-lite-coder"
+    echo "  剪枝后: /root/hf_models/deepseekv2-lite-coder_shapley_alpha_per_layer_gsm8k_25_rate0_6"
 }
 
 # 解析参数
@@ -57,6 +63,7 @@ while [[ $# -gt 0 ]]; do
         -s) STRATEGY="$2"; shift 2 ;;
         -r) RATE="$2"; shift 2 ;;
         -p) PRUNE_STRATEGY="$2"; shift 2 ;;
+        -o) OUTPUT_DIR="$2"; shift 2 ;;
         --device) DEVICE_MAP="$2"; shift 2 ;;
         -h|--help) show_help; exit 0 ;;
         *) echo "未知选项: $1"; show_help; exit 1 ;;
@@ -91,9 +98,20 @@ if [ ! -f "$SELECTION_FILE" ]; then
     exit 1
 fi
 
-# 输出目录
-OUTPUT_NAME=$(basename "$SELECTION_FILE" .json)
-OUTPUT_DIR="${PROJECT_DIR}/models/${MODEL}_${OUTPUT_NAME}"
+# 构建输出目录名称
+OUTPUT_SUFFIX=""
+if [ "$METHOD" = "shapley" ]; then
+    OUTPUT_SUFFIX="${METHOD}_${STRATEGY}_${DATASET}_rate${RATE_STR}"
+else
+    OUTPUT_SUFFIX="${METHOD}_${DATASET}_rate${RATE_STR}"
+fi
+
+# 如果没有指定输出目录，默认保存在原模型的同级目录
+if [ -z "$OUTPUT_DIR" ]; then
+    MODEL_PARENT_DIR=$(dirname "$MODEL_PATH")
+    MODEL_BASENAME=$(basename "$MODEL_PATH")
+    OUTPUT_DIR="${MODEL_PARENT_DIR}/${MODEL_BASENAME}_${OUTPUT_SUFFIX}"
+fi
 
 echo "============================================"
 echo "模型: $MODEL"

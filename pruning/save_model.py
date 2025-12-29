@@ -154,10 +154,12 @@ class ModelPruner:
                           selected_indices: Set[int],
                           layer_idx: int) -> bool:
         """
-        修改 Gate 模块的偏置，使被剪掉的专家不被选中
+        修改 Gate 模块，使被剪掉的专家不被选中
         
-        策略：给被剪掉专家对应的 gate 输出添加一个很大的负偏置
-        这样 softmax/top-k 时这些专家的分数会非常低，不会被选中
+        策略优先级：
+        1. 如果 Gate 已有 bias，修改 bias
+        2. 如果 Gate 是 Linear 且无 bias，尝试添加 bias
+        3. 将被剪掉专家的 weight 行置零（作为备选）
         """
         unselected_indices = [i for i in range(num_experts) if i not in selected_indices]
         
@@ -166,41 +168,62 @@ class ModelPruner:
             return True
         
         modified = False
+        method_used = ""
         
-        # 方法 1: 修改 Linear 层的 bias
+        # 方法 1: 修改 Linear 层
         if isinstance(gate_module, torch.nn.Linear):
             with torch.no_grad():
-                # 如果没有 bias，创建一个
-                if gate_module.bias is None:
-                    gate_module.bias = torch.nn.Parameter(
-                        torch.zeros(gate_module.out_features, 
-                                   device=gate_module.weight.device,
-                                   dtype=gate_module.weight.dtype)
-                    )
-                
-                # 给被剪掉的专家添加大负偏置
-                for idx in unselected_indices:
-                    if idx < gate_module.bias.size(0):
-                        gate_module.bias.data[idx] = GATE_BIAS_VALUE
-                
-                modified = True
-                logger.info(f"Layer {layer_idx}: 修改 gate.bias，屏蔽 {len(unselected_indices)} 个专家")
+                # 1a. 如果已有 bias，直接修改
+                if gate_module.bias is not None:
+                    for idx in unselected_indices:
+                        if idx < gate_module.bias.size(0):
+                            gate_module.bias.data[idx] = GATE_BIAS_VALUE
+                    modified = True
+                    method_used = "修改已有 bias"
+                else:
+                    # 1b. 没有 bias，尝试添加一个
+                    # 注意：这需要模型的 forward 函数支持 bias
+                    # 大多数 nn.Linear 的 forward 会自动使用 bias（如果存在）
+                    try:
+                        new_bias = torch.zeros(
+                            gate_module.out_features, 
+                            device=gate_module.weight.device,
+                            dtype=gate_module.weight.dtype
+                        )
+                        for idx in unselected_indices:
+                            new_bias[idx] = GATE_BIAS_VALUE
+                        
+                        # 注册为新的 bias 参数
+                        gate_module.register_parameter('bias', torch.nn.Parameter(new_bias))
+                        modified = True
+                        method_used = "添加新 bias"
+                        logger.info(f"Layer {layer_idx}: Gate 原本无 bias，已添加")
+                    except Exception as e:
+                        logger.warning(f"Layer {layer_idx}: 添加 bias 失败: {e}")
+                        
+                        # 1c. 如果添加 bias 失败，将被剪掉专家的 weight 行置零
+                        # 这会使这些专家的 gate 分数接近 0（取决于输入）
+                        weight = gate_module.weight
+                        if weight.dim() == 2 and weight.size(0) == num_experts:
+                            for idx in unselected_indices:
+                                weight.data[idx] = 0.0
+                            modified = True
+                            method_used = "weight 置零"
         
-        # 方法 2: 尝试查找 weight 参数并修改对应列（备用）
+        # 方法 2: 对于非 Linear 的 gate 模块
         elif hasattr(gate_module, "weight") and isinstance(gate_module.weight, torch.nn.Parameter):
-            # 对于某些模型，可能需要修改 weight 而不是 bias
-            # 但这种方法风险较大，仅作为备用
             with torch.no_grad():
                 weight = gate_module.weight
                 # 假设 weight 的形状是 [num_experts, hidden_size]
                 if weight.dim() == 2 and weight.size(0) == num_experts:
-                    # 将被剪掉专家的权重设为很小的值
                     for idx in unselected_indices:
-                        weight.data[idx] = weight.data[idx] * 0.0 - 1e6
+                        weight.data[idx] = 0.0
                     modified = True
-                    logger.info(f"Layer {layer_idx}: 修改 gate.weight，屏蔽 {len(unselected_indices)} 个专家")
+                    method_used = "weight 置零 (非 Linear)"
         
-        if not modified:
+        if modified:
+            logger.info(f"Layer {layer_idx}: 屏蔽 {len(unselected_indices)} 个专家 ({method_used})")
+        else:
             logger.warning(f"Layer {layer_idx}: 无法修改 gate 模块 (类型: {type(gate_module).__name__})")
         
         return modified
