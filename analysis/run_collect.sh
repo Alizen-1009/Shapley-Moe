@@ -1,22 +1,22 @@
 #!/bin/bash
 # =============================================================================
-# 一次 Few-Shot 收集所有剪枝信息 - 批处理脚本
+# Unified Few-Shot collection of all pruning information - batch script
 # =============================================================================
 #
-# 功能：
-#   在一次推理中同时收集 Shapley/Gating Score/EASYEP/REAP 四种剪枝方法需要的信息
-#   结果按模型组织保存
-#   优先从 configs/ 读取配置
+# Features:
+#   Collects information needed by Shapley/Gating Score/EASYEP/REAP four pruning methods
+#   in a single inference pass. Results are organized and saved by model.
+#   Preferentially reads configuration from configs/
 #
-# 输出目录结构:
+# Output directory structure:
 #   results/{model_name}/activations/
-#   ├── {dataset}_shapley.json   # Shapley 值计算
-#   ├── {dataset}_gating.json    # Gating Score 剪枝
-#   ├── {dataset}_easyep.json    # EASYEP 剪枝
-#   └── {dataset}_reap.json      # REAP 剪枝
+#   ├── {dataset}_shapley.json   # Shapley value calculation
+#   ├── {dataset}_gating.json    # Gating Score pruning
+#   ├── {dataset}_easyep.json    # EASYEP pruning
+#   └── {dataset}_reap.json      # REAP pruning
 #
-# 用法:
-#   ./run_collect.sh [选项]
+# Usage:
+#   ./run_collect.sh [options]
 #
 # =============================================================================
 
@@ -28,10 +28,10 @@ CONFIG_FILE="${PROJECT_DIR}/configs/experiments.yaml"
 MODELS_CONFIG="${PROJECT_DIR}/configs/models.yaml"
 
 # =============================================================================
-# 从配置文件读取函数
+# Configuration reading functions
 # =============================================================================
 
-# 通用配置读取函数
+# Generic config reading function
 read_config() {
     local key="$1"
     local default="$2"
@@ -69,7 +69,7 @@ except:
     fi
 }
 
-# 从 models.yaml 读取模型路径
+# Read model path from models.yaml
 get_model_path() {
     local model_name="$1"
     
@@ -91,7 +91,7 @@ except:
 " 2>/dev/null
 }
 
-# 列出所有可用模型
+# List all available models
 list_available_models() {
     if [ ! -f "$MODELS_CONFIG" ]; then
         echo ""
@@ -111,11 +111,11 @@ except:
 " 2>/dev/null
 }
 
-# 从配置读取默认值
+# Read defaults from config
 DEFAULT_MAX_TOKENS=$(read_config "defaults.max_new_tokens" "512")
 DEFAULT_DEVICE=$(read_config "defaults.device" "auto")
 
-# 默认参数
+# Default parameters
 MODEL_PATH=""
 MODEL_NAME=""
 DATA_FILE=""
@@ -126,7 +126,7 @@ DEVICE="$DEFAULT_DEVICE"
 RUN_ALL=false
 FORCE=false
 
-# 颜色输出
+# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -138,59 +138,59 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 显示帮助
+# Show help
 show_help() {
     echo "============================================================================="
-    echo "一次 Few-Shot 收集所有剪枝信息"
+    echo "Unified Few-Shot collection of all pruning information"
     echo "============================================================================="
     echo ""
-    echo "用法:"
-    echo "  $0 [选项]"
+    echo "Usage:"
+    echo "  $0 [options]"
     echo ""
-    echo "选项:"
-    echo "  -m, --model NAME|PATH   模型名称（从配置读取路径）或完整路径"
-    echo "  --data FILE             单个数据文件"
-    echo "  --data-dir DIR          数据文件目录（默认: $DATA_DIR）"
-    echo "  --all                   遍历所有数据文件（*.json）"
-    echo "  --output DIR            输出目录（默认: $OUTPUT_DIR）"
-    echo "  --max-tokens NUM        最大生成token数（默认: $DEFAULT_MAX_TOKENS）"
-    echo "  --device DEVICE         设备（默认: $DEFAULT_DEVICE）"
-    echo "  -f, --force             强制重新计算（覆盖已有结果）"
-    echo "  --list-models           列出配置中的所有模型"
-    echo "  --help                  显示此帮助"
+    echo "Options:"
+    echo "  -m, --model NAME|PATH   Model name (reads path from config) or full path"
+    echo "  --data FILE             Single data file"
+    echo "  --data-dir DIR          Data file directory (default: $DATA_DIR)"
+    echo "  --all                   Iterate over all data files (*.json)"
+    echo "  --output DIR            Output directory (default: $OUTPUT_DIR)"
+    echo "  --max-tokens NUM        Maximum number of generated tokens (default: $DEFAULT_MAX_TOKENS)"
+    echo "  --device DEVICE         Device (default: $DEFAULT_DEVICE)"
+    echo "  -f, --force             Force recomputation (overwrite existing results)"
+    echo "  --list-models           List all models in config"
+    echo "  --help                  Show this help"
     echo ""
-    echo "配置文件:"
-    echo "  模型配置: $MODELS_CONFIG"
-    echo "  实验配置: $CONFIG_FILE"
+    echo "Config files:"
+    echo "  Model config: $MODELS_CONFIG"
+    echo "  Experiment config: $CONFIG_FILE"
     echo ""
-    echo "示例:"
-    echo "  # 使用模型名称（自动从配置读取路径）"
+    echo "Examples:"
+    echo "  # Use model name (automatically reads path from config)"
     echo "  $0 -m qwen3-30b-a3b --all"
     echo ""
-    echo "  # 使用完整模型路径"
+    echo "  # Use full model path"
     echo "  $0 -m /path/to/model --data ${DATA_DIR}/gsm8k_25.json"
     echo ""
-    echo "  # 列出可用模型"
+    echo "  # List available models"
     echo "  $0 --list-models"
     echo ""
 }
 
-# 解析参数
+# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -m|--model) 
             MODEL_INPUT="$2"
-            # 检查是路径还是模型名称
+            # Check if it's a path or model name
             if [[ "$MODEL_INPUT" == /* ]] || [[ "$MODEL_INPUT" == ./* ]]; then
-                # 是路径
+                # It's a path
                 MODEL_PATH="$MODEL_INPUT"
                 MODEL_NAME=$(basename "$MODEL_PATH")
             else
-                # 是模型名称，从配置读取路径
+                # It's a model name, read path from config
                 MODEL_NAME="$MODEL_INPUT"
                 MODEL_PATH=$(get_model_path "$MODEL_NAME")
                 if [ -z "$MODEL_PATH" ]; then
-                    log_warning "配置中未找到模型 '$MODEL_NAME' 的路径，将使用名称作为路径"
+                    log_warning "Model '$MODEL_NAME' path not found in config, using name as path"
                     MODEL_PATH="$MODEL_NAME"
                 fi
             fi
@@ -204,7 +204,7 @@ while [[ $# -gt 0 ]]; do
         --device) DEVICE="$2"; shift 2 ;;
         -f|--force) FORCE=true; shift ;;
         --list-models)
-            echo "配置中的可用模型:"
+            echo "Available models in config:"
             list_available_models | while read model; do
                 path=$(get_model_path "$model")
                 echo "  - $model: $path"
@@ -212,37 +212,37 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --help|-h) show_help; exit 0 ;;
-        *) log_error "未知参数: $1"; show_help; exit 1 ;;
+        *) log_error "Unknown argument: $1"; show_help; exit 1 ;;
     esac
 done
 
-# 验证模型参数
+# Validate model argument
 if [ -z "$MODEL_PATH" ]; then
-    log_error "必须指定模型 (-m MODEL)"
+    log_error "Must specify model (-m MODEL)"
     show_help
     exit 1
 fi
 
 cd "$SCRIPT_DIR"
 
-# 运行单个数据文件的函数
+# Function to run analysis on a single data file
 run_single_analysis() {
     local data_file="$1"
     local dataset_name=$(basename "$data_file" .json)
     
     echo ""
     echo "--------------------------------"
-    log_info "处理数据集: $dataset_name"
-    log_info "模型: $MODEL_NAME"
+    log_info "Processing dataset: $dataset_name"
+    log_info "Model: $MODEL_NAME"
     echo "--------------------------------"
     
-    # 检查数据文件是否存在
+    # Check if data file exists
     if [ ! -f "$data_file" ]; then
-        log_error "数据文件不存在: $data_file"
+        log_error "Data file does not exist: $data_file"
         return 1
     fi
     
-    # 构建命令
+    # Build command
     local cmd="python3 collect_activations.py"
     cmd="$cmd --model \"$MODEL_PATH\""
     cmd="$cmd --data \"$data_file\""
@@ -254,51 +254,51 @@ run_single_analysis() {
         cmd="$cmd --force"
     fi
     
-    # 运行分析
+    # Run analysis
     if eval $cmd; then
-        log_success "✓ $dataset_name 分析完成"
+        log_success "$dataset_name analysis completed"
         return 0
     else
-        log_error "✗ $dataset_name 分析失败"
+        log_error "$dataset_name analysis failed"
         return 1
     fi
 }
 
 # =============================================================================
-# 主逻辑
+# Main logic
 # =============================================================================
 
 echo ""
 echo "============================================================================="
-log_info "一次 Few-Shot 收集所有剪枝信息"
+log_info "Unified Few-Shot collection of all pruning information"
 echo "============================================================================="
-log_info "模型名称: $MODEL_NAME"
-log_info "模型路径: $MODEL_PATH"
-log_info "输出目录: $OUTPUT_DIR"
-log_info "生成: $MAX_NEW_TOKENS tokens"
-log_info "设备: $DEVICE"
+log_info "Model name: $MODEL_NAME"
+log_info "Model path: $MODEL_PATH"
+log_info "Output directory: $OUTPUT_DIR"
+log_info "Generation: $MAX_NEW_TOKENS tokens"
+log_info "Device: $DEVICE"
 if [ "$FORCE" = true ]; then
-    log_info "模式: 强制重新计算"
+    log_info "Mode: Force recomputation"
 else
-    log_info "模式: 跳过已有结果"
+    log_info "Mode: Skip existing results"
 fi
 echo "============================================================================="
 
 if [ "$RUN_ALL" = true ]; then
-    # 遍历所有数据文件
-    log_info "数据目录: $DATA_DIR"
+    # Iterate over all data files
+    log_info "Data directory: $DATA_DIR"
     
-    # 检查数据目录是否存在
+    # Check if data directory exists
     if [ ! -d "$DATA_DIR" ]; then
-        log_error "数据目录不存在: $DATA_DIR"
+        log_error "Data directory does not exist: $DATA_DIR"
         exit 1
     fi
     
-    # 查找所有JSON文件
+    # Find all JSON files
     data_files=("$DATA_DIR"/*.json)
     
     if [ ! -e "${data_files[0]}" ]; then
-        log_error "在 $DATA_DIR 中未找到任何JSON文件"
+        log_error "No JSON files found in $DATA_DIR"
         exit 1
     fi
     
@@ -307,10 +307,10 @@ if [ "$RUN_ALL" = true ]; then
     failed=0
     failed_files=()
     
-    log_info "找到 $total 个数据文件"
+    log_info "Found $total data files"
     echo ""
     
-    # 遍历处理每个文件
+    # Process each file
     for data_file in "${data_files[@]}"; do
         if run_single_analysis "$data_file"; then
             ((success++))
@@ -320,44 +320,44 @@ if [ "$RUN_ALL" = true ]; then
         fi
     done
     
-    # 输出总结
+    # Output summary
     echo ""
     echo "============================================================================="
-    log_info "批量处理完成"
+    log_info "Batch processing completed"
     echo "============================================================================="
-    log_info "总计: $total 个数据集"
-    log_success "成功: $success 个"
+    log_info "Total: $total datasets"
+    log_success "Succeeded: $success"
     
     if [ $failed -gt 0 ]; then
-        log_error "失败: $failed 个"
+        log_error "Failed: $failed"
         echo ""
-        echo "失败的文件:"
+        echo "Failed files:"
         for file in "${failed_files[@]}"; do
             echo "  - $file"
         done
     fi
     
     echo ""
-    log_info "结果目录: ${OUTPUT_DIR}/${MODEL_NAME}/activations/"
+    log_info "Results directory: ${OUTPUT_DIR}/${MODEL_NAME}/activations/"
     echo ""
     
 elif [ -n "$DATA_FILE" ]; then
-    # 单个文件处理
-    log_info "数据: $DATA_FILE"
+    # Single file processing
+    log_info "Data: $DATA_FILE"
     echo ""
     
     if run_single_analysis "$DATA_FILE"; then
         echo ""
         echo "============================================================================="
-        log_success "分析完成！"
+        log_success "Analysis completed!"
         echo "============================================================================="
-        log_info "结果目录: ${OUTPUT_DIR}/${MODEL_NAME}/activations/"
+        log_info "Results directory: ${OUTPUT_DIR}/${MODEL_NAME}/activations/"
         echo ""
     else
         exit 1
     fi
 else
-    log_error "请指定 --data 或 --all"
+    log_error "Please specify --data or --all"
     show_help
     exit 1
 fi

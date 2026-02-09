@@ -1,251 +1,251 @@
-# Shapley-MoE: MoE 专家剪枝框架
+# Shapley-MoE: Expert Pruning Framework for Mixture-of-Experts
 
-## 📁 项目结构
+## Project Structure
 
 ```
 shapley-moe/
 │
-├── data/                               # 数据集
-│   ├── calibration/                    # 校准数据（few-shot 用）
+├── data/                               # Datasets
+│   ├── calibration/                    # Calibration data (for few-shot)
 │   │   ├── arc_easy_25.json
 │   │   ├── gsm8k_25.json
 │   │   └── ...
 │   ├── download_dataset.py
 │   └── run_download.sh
 │
-├── analysis/                           # 分析脚本
-│   ├── collect_activations.py          # 收集激活信息（一体化）
-│   ├── calc_shapley.py                 # 计算 Shapley 值
-│   ├── run_collect.sh                  # 批量收集激活
-│   └── run_calc_shapley.sh             # 批量计算 Shapley
+├── analysis/                           # Analysis scripts
+│   ├── collect_activations.py          # Collect activation information (all-in-one)
+│   ├── calc_shapley.py                 # Compute Shapley values
+│   ├── run_collect.sh                  # Batch activation collection
+│   └── run_calc_shapley.sh             # Batch Shapley computation
 │
-├── pruning/                            # 剪枝相关
-│   ├── methods/                        # 剪枝方法
-│   │   ├── select_by_shapley.py        # Shapley 值剪枝（主方法）
-│   │   ├── select_by_easyep.py         # EASYEP 剪枝
-│   │   ├── select_by_reap.py           # REAP 剪枝
-│   │   ├── select_by_gating.py         # Gating Score 剪枝
-│   │   ├── select_by_frequency.py      # 激活频率剪枝（基线）
-│   │   └── select_by_random.py         # 随机剪枝（基线）
-│   ├── save_model.py                   # 保存剪枝后模型
-│   └── run_select.sh                   # 统一的专家选择脚本
+├── pruning/                            # Pruning related
+│   ├── methods/                        # Pruning methods
+│   │   ├── select_by_shapley.py        # Shapley value pruning (primary method)
+│   │   ├── select_by_easyep.py         # EASYEP pruning
+│   │   ├── select_by_reap.py          # REAP pruning
+│   │   ├── select_by_gating.py         # Gating Score pruning
+│   │   ├── select_by_frequency.py      # Activation frequency pruning (baseline)
+│   │   └── select_by_random.py         # Random pruning (baseline)
+│   ├── save_model.py                   # Save pruned model
+│   └── run_select.sh                   # Unified expert selection script
 │
-├── evaluation/                         # 评测脚本
+├── evaluation/                         # Evaluation scripts
 │   ├── run_evalscope.py
 │   └── vllm_server.sh
 │
-├── results/                            # 所有结果（按模型组织）
-│   ├── {model_name}/                   # 如 qwen3-30b-a3b/
-│   │   ├── activations/                # 激活统计
+├── results/                            # All results (organized by model)
+│   ├── {model_name}/                   # e.g. qwen3-30b-a3b/
+│   │   ├── activations/                # Activation statistics
 │   │   │   ├── {dataset}_shapley.json
 │   │   │   ├── {dataset}_gating.json
 │   │   │   ├── {dataset}_easyep.json
 │   │   │   └── {dataset}_reap.json
-│   │   ├── shapley_values/             # Shapley 值
+│   │   ├── shapley_values/             # Shapley values
 │   │   │   └── {dataset}_shapley.csv
-│   │   └── selected_experts/           # 选中的专家
+│   │   └── selected_experts/           # Selected experts
 │   │       ├── shapley_{strategy}_{dataset}_rate{XX}.json
-│   │       ├── {method}_{dataset}_rate{XX}.json  # 其他方法
+│   │       ├── {method}_{dataset}_rate{XX}.json  # Other methods
 │   │       └── ...
 │   └── ...
 │
-├── models/                             # 剪枝后的模型
+├── models/                             # Pruned models
 │   └── {model}_{method}_rate{XX}/
 │
-└── configs/                            # 配置文件
-    ├── models.yaml                     # 模型配置
-    └── experiments.yaml                # 实验配置
+└── configs/                            # Configuration files
+    ├── models.yaml                     # Model configuration
+    └── experiments.yaml                # Experiment configuration
 ```
 
-## 🚀 快速开始
+## Quick Start
 
-### 0. 配置（推荐先修改）
+### 0. Configuration (recommended to modify first)
 
-所有脚本优先从 `configs/` 目录读取配置：
+All scripts prioritize reading from the `configs/` directory:
 
 ```bash
-# 修改模型路径
+# Modify model paths
 vim configs/models.yaml
 
-# 修改实验参数（剪枝率、数据集等）
+# Modify experiment parameters (pruning rates, datasets, etc.)
 vim configs/experiments.yaml
 ```
 
-### 1. 数据准备
+### 1. Data Preparation
 
 ```bash
 cd data
 
-# 下载单个数据集
+# Download a single dataset
 ./run_download.sh gsm8k 25
 
-# 下载配置中的所有数据集
+# Download all datasets from config
 ./run_download.sh --all
 ```
 
-### 2. 收集激活信息
+### 2. Collect Activation Information
 
-一次收集所有剪枝方法需要的信息（Shapley/Gating/EASYEP/REAP）：
+Collect information needed by all pruning methods at once (Shapley/Gating/EASYEP/REAP):
 
 ```bash
 cd analysis
 
-# 使用模型名称（自动从配置读取路径）
+# Use model name (path auto-read from config)
 ./run_collect.sh -m qwen3-30b-a3b --all
 
-# 或使用完整路径
+# Or use full path
 ./run_collect.sh -m /path/to/model --data ../data/calibration/gsm8k_25.json
 
-# 查看配置中的可用模型
+# View available models in config
 ./run_collect.sh --list-models
 ```
 
-### 3. 计算 Shapley 值（可选）
+### 3. Compute Shapley Values (optional)
 
 ```bash
 ./run_calc_shapley.sh -m MODEL_NAME
 ```
 
-### 4. 专家选择
+### 4. Expert Selection
 
 ```bash
 cd ../pruning
 
-# 使用 Shapley 剪枝，保留 50%（剪枝率从配置读取）
+# Use Shapley pruning, retain 50% (pruning rate read from config)
 ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.5
 
 ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley --all-rates
 
-# 批量处理（使用配置中的所有剪枝率）
+# Batch processing (using all pruning rates from config)
 ./run_select.sh -m qwen3-30b-a3b --all-datasets -M easyep --all-rates
 
-# 使用配置中的所有方法
+# Use all methods from config
 ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 --all-methods --all-rates
 ```
 
-### 5. 保存剪枝模型
+### 5. Save Pruned Model
 
 ```bash
 cd ../pruning
 
-# 指定模型、数据集、剪枝率（自动查找对应的选择文件）
+# Specify model, dataset, pruning rate (auto-finds corresponding selection file)
 ./run_prune.sh -m qwen3-30b-a3b -d gsm8k_25 -r 0.8
 
-# 使用其他方法
+# Use other methods
 ./run_prune.sh -m gpt-oss-20b -d arc_easy_25 -M easyep -r 0.6
 
-# 参数说明
-#   -m MODEL     模型名称
-#   -d DATASET   数据集名称
-#   -M METHOD    剪枝方法（默认: shapley）
-#   -s STRATEGY  Shapley策略（默认: alpha_per_layer）
-#   -r RATE      剪枝率（默认: 0.8）
+# Parameter description
+#   -m MODEL     Model name
+#   -d DATASET   Dataset name
+#   -M METHOD    Pruning method (default: shapley)
+#   -s STRATEGY  Shapley strategy (default: alpha_per_layer)
+#   -r RATE      Pruning rate (default: 0.8)
 ```
 
-### 6. 评测
+### 6. Evaluation
 
 ```bash
 cd ../evaluation
 
-# 启动模型服务（使用模型名称，自动读取配置中的路径）
+# Start model service (use model name, path auto-read from config)
 ./vllm-server.sh qwen3-30b-a3b
 
-# 或指定完整路径
+# Or specify full path
 ./vllm-server.sh /path/to/model -p 8801
 
-# 运行评测（数据集从配置读取）
+# Run evaluation (datasets read from config)
 python run_evalscope.py
 
-# 查看可用数据集
+# View available datasets
 python run_evalscope.py --list-datasets
 ```
 
-## 📊 剪枝方法
+## Pruning Methods
 
-| 方法 | 描述 | 公式 |
-|------|------|------|
-| **Shapley** | 基于边际贡献的剪枝（主方法） | Shapley Value |
-| **EASYEP** | 考虑 MoE 对 token 影响程度 | `weight × (1 - simibr) × norm` |
-| **REAP** | 加权范数 | `weight × norm` |
-| **Gating** | 基于 router softmax 分数 | `mean(softmax(gating_logits))` |
-| **Frequency** | 基于激活频率（基线） | `count(activations)` |
-| **Random** | 随机选择（基线） | random |
+| Method | Description | Formula |
+|--------|-------------|---------|
+| **Shapley** | Marginal contribution-based pruning (primary method) | Shapley Value |
+| **EASYEP** | Considers MoE impact on tokens | `weight × (1 - simibr) × norm` |
+| **REAP** | Weighted norm | `weight × norm` |
+| **Gating** | Based on router softmax scores | `mean(softmax(gating_logits))` |
+| **Frequency** | Based on activation frequency (baseline) | `count(activations)` |
+| **Random** | Random selection (baseline) | random |
 
-### Shapley 剪枝策略
+### Shapley Pruning Strategies
 
-Shapley 方法支持四种策略：
+The Shapley method supports four strategies:
 
-| 策略 | 描述 | 适用场景 |
-|------|------|----------|
-| `topk_per_layer` | 每层选择 Shapley 值最高的 top-k 专家 | **推荐**，简单直接 |
-| `topk_global` | 全局选择 Shapley 值最高的专家 | 某些层可保留更多专家 |
-| `alpha_per_layer` | 每层累积 Shapley 值达到 alpha 比例 | 考虑贡献分布 |
-| `alpha_global` | 全局累积 Shapley 值达到 alpha 比例 | 全局优化 |
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `topk_per_layer` | Select top-k experts with highest Shapley values per layer | **Recommended**, simple and straightforward |
+| `topk_global` | Select experts with highest Shapley values globally | Some layers can retain more experts |
+| `alpha_per_layer` | Cumulative Shapley values reach alpha proportion per layer | Considers contribution distribution |
+| `alpha_global` | Cumulative Shapley values reach alpha proportion globally | Global optimization |
 
 **TopK vs Alpha:**
-- `topk`: 直接按 Shapley 值大小排序，选择前 k 个。简单、可解释性强。
-- `alpha`: 选择累积 Shapley 值达到总量 alpha 比例的最少专家。考虑了贡献分布。
+- `topk`: Directly sorted by Shapley value, select top k. Simple, highly interpretable.
+- `alpha`: Select minimum experts whose cumulative Shapley value reaches the target proportion of total. Considers contribution distribution.
 
 **Per Layer vs Global:**
-- `per_layer`: 每层独立选择，保证每层都有足够专家。
-- `global`: 全局统一选择，某些层可能专家较少。
+- `per_layer`: Independent selection per layer, ensures sufficient experts per layer.
+- `global`: Unified global selection, some layers may have fewer experts.
 
 ```bash
-# 使用不同策略
+# Use different strategies
 python pruning/methods/select_by_shapley.py \
     --input results/model/shapley_values/gsm8k_25_shapley.csv \
     --output selected.json \
     --pruning_rate 0.5 \
-    --strategy topk_per_layer  # 或 topk_global, alpha_per_layer, alpha_global
+    --strategy topk_per_layer  # or topk_global, alpha_per_layer, alpha_global
 ```
 
-## 📝 命名规范
+## Naming Conventions
 
-- **模型**: `qwen3-30b-a3b`, `gpt-oss-20b`, `deepseekv2-lite-coder`
-- **数据集**: `{name}_{samples}` 如 `gsm8k_25`
-- **剪枝方法**: `shapley`, `easyep`, `reap`, `gating`, `frequency`, `random`
-- **Shapley 策略**: `alpha_per_layer`, `alpha_global`, `topk_per_layer`, `topk_global`
-- **剪枝率**: `rate0_8`, `rate0_6` (保留比例，如 0.8 表示保留 80%)
-- **选中专家文件**:
+- **Models**: `qwen3-30b-a3b`, `gpt-oss-20b`, `deepseekv2-lite-coder`
+- **Datasets**: `{name}_{samples}` e.g. `gsm8k_25`
+- **Pruning methods**: `shapley`, `easyep`, `reap`, `gating`, `frequency`, `random`
+- **Shapley strategies**: `alpha_per_layer`, `alpha_global`, `topk_per_layer`, `topk_global`
+- **Pruning rate**: `rate0_8`, `rate0_6` (retention ratio, e.g. 0.8 means retain 80%)
+- **Selected expert files**:
   - Shapley: `shapley_{strategy}_{dataset}_rate{XX}.json`
-  - 其他方法: `{method}_{dataset}_rate{XX}.json`
+  - Other methods: `{method}_{dataset}_rate{XX}.json`
 
-## 🔧 配置
+## Configuration
 
-配置文件位于 `configs/` 目录，**所有脚本优先从配置文件读取信息**：
+Configuration files are in the `configs/` directory. **All scripts prioritize reading from config files**:
 
-### models.yaml - 模型配置
+### models.yaml - Model Configuration
 
 ```yaml
 models:
   qwen3-30b-a3b:
-    path: /path/to/qwen3-30b-a3b    # 模型路径
-    num_experts: 128                 # 专家总数
-    num_experts_per_tok: 8           # 每 token 激活专家数
-    type: qwen3                      # 模型类型
+    path: /path/to/qwen3-30b-a3b    # Model path
+    num_experts: 128                 # Total number of experts
+    num_experts_per_tok: 8           # Number of experts activated per token
+    type: qwen3                      # Model type
 ```
 
-### experiments.yaml - 实验配置
+### experiments.yaml - Experiment Configuration
 
 ```yaml
-# 数据集列表
+# Dataset list
 datasets:
   - humaneval_25
   - gsm8k_25
   - ...
 
-# 剪枝率（保留比例）
+# Pruning rates (retention ratio)
 pruning_rates:
-  - 0.80   # 保留 80%
-  - 0.60   # 保留 60%
+  - 0.80   # Retain 80%
+  - 0.60   # Retain 60%
 
-# 剪枝方法
+# Pruning methods
 pruning_methods:
   - shapley
   - easyep
   - ...
 
-# 默认值
+# Defaults
 defaults:
   pruning_rate: 0.5
   pruning_method: shapley
@@ -254,13 +254,12 @@ defaults:
   eval_port: 8801
 ```
 
-### 脚本如何使用配置
+### How Scripts Use Configuration
 
-| 脚本 | 读取的配置 |
-|------|-----------|
-| `run_collect.sh` | 模型路径、max_new_tokens、device |
-| `run_select.sh` | 剪枝率、剪枝方法、Shapley 策略 |
-| `run_download.sh` | 数据集列表 |
-| `vllm-server.sh` | 模型路径、eval_port |
-| `run_evalscope.py` | 评测数据集、batch_size、timeout |
-
+| Script | Config Read |
+|--------|-------------|
+| `run_collect.sh` | Model path, max_new_tokens, device |
+| `run_select.sh` | Pruning rates, pruning methods, Shapley strategies |
+| `run_download.sh` | Dataset list |
+| `vllm-server.sh` | Model path, eval_port |
+| `run_evalscope.py` | Evaluation datasets, batch_size, timeout |

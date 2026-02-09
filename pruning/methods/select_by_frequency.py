@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-基于激活频率的专家选择工具（对照实验）
+Activation Frequency Based Expert Selection Tool (Baseline Experiment)
 
-从 few-shot/results 目录中的 aggregated JSON 文件读取专家激活次数，然后基于激活频率进行剪枝。
+Read expert activation counts from aggregated JSON files in the few-shot/results directory, then prune based on activation frequency.
 
-支持两种策略：
-1. 全局剪枝率：在所有层中总共保留 X% 的专家（按激活频率排序）
-2. 每层剪枝率：每层都保留 X% 的专家（按激活频率排序，推荐）
+Supports two strategies:
+1. Global pruning rate: Retain X% of experts across all layers (sorted by activation frequency)
+2. Per-layer pruning rate: Retain X% of experts per layer (sorted by activation frequency, recommended)
 """
 
 import pandas as pd
@@ -21,32 +21,32 @@ from typing import Dict, List, Tuple, Optional
 
 def parse_aggregated_json(json_file: str) -> pd.DataFrame:
     """
-    从 aggregated JSON 文件中解析专家激活次数
+    Parse expert activation counts from aggregated JSON file
     
     Args:
-        json_file: aggregated JSON 文件路径
+        json_file: Aggregated JSON file path
         
     Returns:
-        DataFrame 包含 Layer, Expert_ID, Total_Activations 列
+        DataFrame with Layer, Expert_ID, Total_Activations columns
     """
     with open(json_file, 'r') as f:
         data = json.load(f)
     
-    # 统计每层每个专家的激活次数
+    # Count activations per expert per layer
     layer_expert_counts = defaultdict(lambda: defaultdict(int))
     
     for layer_id, combinations in data['layers'].items():
         for combo_str, count in combinations.items():
-            # 解析元组字符串，例如 '(5, 13, 16, 22)'
+            # Parse tuple string, e.g. '(5, 13, 16, 22)'
             try:
                 combo = ast.literal_eval(combo_str)
                 for expert_id in combo:
                     layer_expert_counts[int(layer_id)][int(expert_id)] += count
             except (ValueError, SyntaxError) as e:
-                # 如果解析失败，跳过这个组合
+                # If parsing fails, skip this combination
                 continue
     
-    # 转换为 DataFrame
+    # Convert to DataFrame
     results = []
     for layer_id in sorted(layer_expert_counts.keys()):
         for expert_id, count in layer_expert_counts[layer_id].items():
@@ -59,15 +59,15 @@ def parse_aggregated_json(json_file: str) -> pd.DataFrame:
     df = pd.DataFrame(results)
     
     if df.empty:
-        raise ValueError(f"无法从 {json_file} 中解析出任何专家激活数据")
+        raise ValueError(f"Unable to parse any expert activation data from {json_file}")
     
     return df
 
 
 def _infer_num_experts(df: pd.DataFrame) -> int:
-    """从数据中推断专家总数（默认 max(Expert_ID)+1）。"""
+    """Infer total number of experts from data (default max(Expert_ID)+1)."""
     if "Expert_ID" not in df.columns or df["Expert_ID"].empty:
-        raise ValueError("输入数据缺少 Expert_ID，无法推断 num_experts。")
+        raise ValueError("Input data missing Expert_ID, cannot infer num_experts.")
     return int(df["Expert_ID"].max()) + 1
 
 
@@ -78,29 +78,29 @@ def _complete_layers_with_missing_experts(
     missing_sample_limit: int = 20,
 ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
     """
-    强制把每层补齐为 [0..num_experts-1] 的完整 Expert_ID 集合。
-    - 缺失行补 Total_Activations=0
-    - 返回补齐后的 df，以及每层缺失的 expert_id 列表
+    Force each layer to have a complete set of Expert_IDs [0..num_experts-1].
+    - Missing rows are filled with Total_Activations=0
+    - Returns the completed df and a list of missing expert_ids per layer
     """
     if "Layer" not in df.columns or "Expert_ID" not in df.columns:
-        raise ValueError("输入数据必须包含 Layer 与 Expert_ID 两列。")
+        raise ValueError("Input data must contain Layer and Expert_ID columns.")
 
     num_experts = int(num_experts)
     if num_experts <= 0:
-        raise ValueError("num_experts 必须为正整数。")
+        raise ValueError("num_experts must be a positive integer.")
 
     missing_by_layer: Dict[int, List[int]] = {}
     layers = sorted(df["Layer"].unique().tolist())
 
-    # 标准化列
+    # Standardize columns
     df = df.copy()
     df["Layer"] = df["Layer"].astype(int)
     df["Expert_ID"] = df["Expert_ID"].astype(int)
 
     if "Total_Activations" not in df.columns:
-        raise ValueError("输入数据必须包含 Total_Activations 列（激活频率）。")
+        raise ValueError("Input data must contain Total_Activations column (activation frequency).")
     
-    # 添加 Shapley_Value 列（用于统计，但这里不实际使用）
+    # Add Shapley_Value column (for statistics, not actually used here)
     if "Shapley_Value" not in df.columns:
         df["Shapley_Value"] = 0.0
 
@@ -117,16 +117,16 @@ def _complete_layers_with_missing_experts(
         if strict_missing and missing:
             sample = missing[:missing_sample_limit]
             raise ValueError(
-                f"Layer {layer_id} 缺失 {len(missing)}/{num_experts} 个专家（样例: {sample}）。"
+                f"Layer {layer_id} missing {len(missing)}/{num_experts} experts (sample: {sample})."
             )
 
-        # 用 reindex 补齐
+        # Fill with reindex
         layer_df = layer_df.set_index("Expert_ID").reindex(full_index)
         layer_df.index.name = "Expert_ID"
         layer_df = layer_df.reset_index()
         layer_df["Layer"] = int(layer_id)
 
-        # 缺失值补 0
+        # Fill missing values with 0
         layer_df["Total_Activations"] = layer_df["Total_Activations"].fillna(0).astype(int)
         layer_df["Shapley_Value"] = layer_df["Shapley_Value"].fillna(0.0)
 
@@ -138,21 +138,21 @@ def _complete_layers_with_missing_experts(
 
 def select_by_activation_alpha(df: pd.DataFrame, alpha: float) -> Tuple[Dict[int, List[int]], int]:
     """
-    根据 alpha 因子和激活频率选择专家
+    Select experts based on alpha factor and activation frequency
 
     Args:
-        df: 包含 Total_Activations 的数据
-        alpha: 累积激活频率比例阈值
+        df: Data containing Total_Activations
+        alpha: Cumulative activation frequency ratio threshold
 
     Returns:
         selection_results: {layer_id: [expert_ids]}
-        total_selected: 总共选中的专家数
+        total_selected: Total number of selected experts
     """
     selection_results = {}
     total_selected = 0
 
     for layer_id, group in df.groupby("Layer"):
-        # 按激活频率降序排序
+        # Sort by activation frequency in descending order
         group_sorted = group.sort_values("Total_Activations", ascending=False)
         total_activations = group_sorted["Total_Activations"].sum()
         target_activations = total_activations * alpha
@@ -180,28 +180,28 @@ def find_alpha_for_global_pruning_rate(
     max_iterations: int = 50,
 ) -> Tuple[float, Dict[int, List[int]], float]:
     """
-    使用二分查找找到合适的 alpha，使得总剪枝率接近目标值（基于激活频率）
+    Use binary search to find alpha such that global pruning rate is close to target (based on activation frequency)
 
     Args:
-        df: 激活频率数据
-        target_pruning_rate: 目标剪枝率（保留的专家比例，例如 0.4 表示保留40%）
-        tolerance: 容差
-        max_iterations: 最大迭代次数
+        df: Activation frequency data
+        target_pruning_rate: Target pruning rate (retained expert ratio, e.g. 0.4 means keep 40%)
+        tolerance: Tolerance
+        max_iterations: Maximum iterations
 
     Returns:
-        best_alpha: 找到的最佳 alpha
-        selection_results: 专家选择结果
-        actual_rate: 实际剪枝率
+        best_alpha: Best alpha found
+        selection_results: Expert selection results
+        actual_rate: Actual pruning rate
     """
-    # 计算总专家数（补齐后应为 num_layers * num_experts）
+    # Calculate total experts (should be num_layers * num_experts after filling)
     total_experts = len(df)
     target_count = int(total_experts * target_pruning_rate)
 
-    print(f"总专家数: {total_experts}")
-    print(f"目标保留: {target_count} 个专家 ({target_pruning_rate:.1%})")
-    print(f"开始二分查找 alpha（基于激活频率）...")
+    print(f"Total experts: {total_experts}")
+    print(f"Target retention: {target_count} experts ({target_pruning_rate:.1%})")
+    print(f"Starting binary search for alpha (based on activation frequency)...")
 
-    # 二分查找
+    # Binary search
     left, right = 0.0, 1.0
     best_alpha = 0.5
     best_selection = None
@@ -215,36 +215,36 @@ def find_alpha_for_global_pruning_rate(
         abs_diff = abs(diff)
 
         print(
-            f"  迭代 {iteration+1}: alpha={mid_alpha:.4f}, 选中={selected_count}, 目标={target_count}, 差={diff}"
+            f"  Iteration {iteration+1}: alpha={mid_alpha:.4f}, selected={selected_count}, target={target_count}, diff={diff}"
         )
 
-        # 更新最佳结果
+        # Update best result
         if abs_diff < best_diff:
             best_diff = abs_diff
             best_alpha = mid_alpha
             best_selection = selection
 
-        # 检查是否达到容差
+        # Check tolerance
         actual_rate = selected_count / total_experts
         if abs(actual_rate - target_pruning_rate) < tolerance:
-            print(f"✓ 找到合适的 alpha={mid_alpha:.4f}")
+            print(f"✓ Found suitable alpha={mid_alpha:.4f}")
             break
 
-        # 调整搜索区间
+        # Adjust search range
         if selected_count < target_count:
-            # 选中的太少，需要增加 alpha（降低阈值）
+            # Too few selected, need to increase alpha (lower threshold)
             left = mid_alpha
         else:
-            # 选中的太多，需要减少 alpha（提高阈值）
+            # Too many selected, need to decrease alpha (raise threshold)
             right = mid_alpha
 
     actual_rate = (
         sum(len(experts) for experts in best_selection.values()) / total_experts
     )
 
-    print(f"\n✓ 最佳 alpha = {best_alpha:.4f}")
+    print(f"\n✓ Best alpha = {best_alpha:.4f}")
     print(
-        f"  实际保留: {sum(len(experts) for experts in best_selection.values())}/{total_experts} ({actual_rate:.1%})"
+        f"  Actual retention: {sum(len(experts) for experts in best_selection.values())}/{total_experts} ({actual_rate:.1%})"
     )
 
     return best_alpha, best_selection, actual_rate
@@ -257,30 +257,30 @@ def find_alpha_for_per_layer_pruning_rate(
     max_iterations: int = 50,
 ) -> Tuple[float, Dict[int, List[int]], float]:
     """
-    使用二分查找找到合适的 alpha，使得每层的平均剪枝率接近目标值（基于激活频率）
+    Use binary search to find alpha such that average per-layer pruning rate is close to target (based on activation frequency)
 
     Args:
-        df: 激活频率数据
-        target_pruning_rate: 目标剪枝率（每层保留的专家比例）
-        tolerance: 容差
-        max_iterations: 最大迭代次数
+        df: Activation frequency data
+        target_pruning_rate: Target pruning rate (retained expert ratio per layer)
+        tolerance: Tolerance
+        max_iterations: Maximum iterations
 
     Returns:
-        best_alpha: 找到的最佳 alpha
-        selection_results: 专家选择结果
-        avg_rate: 平均每层剪枝率
+        best_alpha: Best alpha found
+        selection_results: Expert selection results
+        avg_rate: Average per-layer pruning rate
     """
     num_layers = df["Layer"].nunique()
     experts_per_layer = int(df.groupby("Layer").size().max())
 
-    print(f"层数: {num_layers}")
-    print(f"每层专家数: {experts_per_layer}")
+    print(f"Number of layers: {num_layers}")
+    print(f"Experts per layer: {experts_per_layer}")
     print(
-        f"目标每层保留: {int(experts_per_layer * target_pruning_rate)} 个专家 ({target_pruning_rate:.1%})"
+        f"Target per-layer retention: {int(experts_per_layer * target_pruning_rate)} experts ({target_pruning_rate:.1%})"
     )
-    print(f"开始二分查找 alpha（基于激活频率）...")
+    print(f"Starting binary search for alpha (based on activation frequency)...")
 
-    # 二分查找
+    # Binary search
     left, right = 0.0, 1.0
     best_alpha = 0.5
     best_selection = None
@@ -290,7 +290,7 @@ def find_alpha_for_per_layer_pruning_rate(
         mid_alpha = (left + right) / 2
         selection, total_selected = select_by_activation_alpha(df, mid_alpha)
 
-        # 计算平均每层保留的专家数
+        # Calculate average experts retained per layer
         avg_selected_per_layer = total_selected / num_layers
         target_per_layer = experts_per_layer * target_pruning_rate
 
@@ -298,22 +298,22 @@ def find_alpha_for_per_layer_pruning_rate(
         abs_diff = abs(diff)
 
         print(
-            f"  迭代 {iteration+1}: alpha={mid_alpha:.4f}, 平均每层={avg_selected_per_layer:.1f}, 目标={target_per_layer:.1f}, 差={diff:.1f}"
+            f"  Iteration {iteration+1}: alpha={mid_alpha:.4f}, avg per layer={avg_selected_per_layer:.1f}, target={target_per_layer:.1f}, diff={diff:.1f}"
         )
 
-        # 更新最佳结果
+        # Update best result
         if abs_diff < best_diff:
             best_diff = abs_diff
             best_alpha = mid_alpha
             best_selection = selection
 
-        # 检查是否达到容差
+        # Check tolerance
         actual_rate = avg_selected_per_layer / experts_per_layer
         if abs(actual_rate - target_pruning_rate) < tolerance:
-            print(f"✓ 找到合适的 alpha={mid_alpha:.4f}")
+            print(f"✓ Found suitable alpha={mid_alpha:.4f}")
             break
 
-        # 调整搜索区间
+        # Adjust search range
         if avg_selected_per_layer < target_per_layer:
             left = mid_alpha
         else:
@@ -325,9 +325,9 @@ def find_alpha_for_per_layer_pruning_rate(
         / experts_per_layer
     )
 
-    print(f"\n✓ 最佳 alpha = {best_alpha:.4f}")
+    print(f"\n✓ Best alpha = {best_alpha:.4f}")
     print(
-        f"  平均每层保留: {sum(len(experts) for experts in best_selection.values()) / num_layers:.1f}/{experts_per_layer} ({avg_rate:.1%})"
+        f"  Average per-layer retention: {sum(len(experts) for experts in best_selection.values()) / num_layers:.1f}/{experts_per_layer} ({avg_rate:.1%})"
     )
 
     return best_alpha, best_selection, avg_rate
@@ -343,11 +343,11 @@ def save_results(
     expected_num_experts: Optional[int],
     output_dir: str,
 ):
-    """保存选择结果和统计信息"""
+    """Save selection results and statistics"""
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 生成文件名
+    # Generate filenames
     rate_str = f"{int(pruning_rate * 100)}"
     output_json = os.path.join(
         output_dir, f"selected_experts_activation_{strategy}_rate{rate_str}.json"
@@ -356,12 +356,12 @@ def save_results(
         output_dir, f"selection_stats_activation_{strategy}_rate{rate_str}.csv"
     )
 
-    # 保存选择结果（转换为字符串键以匹配现有格式）
+    # Save selection results (convert to string keys to match existing format)
     selection_results_str_keys = {str(k): v for k, v in selection_results.items()}
     with open(output_json, "w") as f:
         json.dump(selection_results_str_keys, f, indent=4)
 
-    # 生成统计信息
+    # Generate statistics
     stats_data = []
     for layer_id, selected_experts in selection_results.items():
         layer_df = df[df["Layer"] == layer_id]
@@ -374,7 +374,7 @@ def save_results(
             selected_activations / total_activations if total_activations > 0 else 0
         )
 
-        # Shapley 值（如果存在，这里通常为0）
+        # Shapley value (if exists, usually 0 here)
         if "Shapley_Value" in layer_df.columns:
             total_shapley = layer_df["Shapley_Value"].sum()
             selected_shapley = layer_df[layer_df["Expert_ID"].isin(selected_experts)][
@@ -413,32 +413,32 @@ def save_results(
             }
         )
 
-    # 保存统计
+    # Save statistics
     stats_df = pd.DataFrame(stats_data)
     stats_df.to_csv(output_csv, index=False)
 
-    # 计算总体统计
+    # Calculate overall statistics
     total_experts = len(df)
     total_selected = sum(len(experts) for experts in selection_results.values())
     actual_global_rate = total_selected / total_experts
 
     print(f"\n{'='*70}")
-    print(f"基于激活频率的选择完成！")
+    print(f"Activation frequency based selection completed!")
     print(f"{'='*70}")
-    print(f"策略: {strategy} (激活频率)")
-    print(f"最佳 alpha: {alpha:.4f}")
-    print(f"目标剪枝率: {pruning_rate:.1%}")
-    print(f"实际剪枝率: {actual_global_rate:.1%}")
-    print(f"总专家数: {total_experts}")
-    print(f"保留专家: {total_selected}")
-    print(f"剪除专家: {total_experts - total_selected}")
-    print(f"\n结果已保存:")
+    print(f"Strategy: {strategy} (activation frequency)")
+    print(f"Best alpha: {alpha:.4f}")
+    print(f"Target pruning rate: {pruning_rate:.1%}")
+    print(f"Actual pruning rate: {actual_global_rate:.1%}")
+    print(f"Total experts: {total_experts}")
+    print(f"Retained experts: {total_selected}")
+    print(f"Pruned experts: {total_experts - total_selected}")
+    print(f"\nResults saved:")
     print(f"  - {output_json}")
     print(f"  - {output_csv}")
     print(f"{'='*70}")
 
-    # 打印每层摘要
-    print("\n每层摘要:")
+    # Print per-layer summary
+    print("\nPer-layer summary:")
     print(
         stats_df[
             ["Layer", "Total_Experts", "Selected_Experts", "Pruning_Rate", "Activation_Ratio"]
@@ -448,24 +448,24 @@ def save_results(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="基于激活频率的专家选择工具（对照实验）- 从 aggregated JSON 文件读取激活次数",
+        description="Activation Frequency Based Expert Selection Tool (Baseline Experiment) - Reads activation counts from aggregated JSON file",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-策略说明:
+Strategy description:
 
-  global    - 全局剪枝率：在所有层中总共保留 X% 的专家（按激活频率排序）
-  per_layer - 每层剪枝率：每层都保留 X% 的专家（按激活频率排序，推荐）
+  global    - Global pruning rate: Retain X%% of experts across all layers (sorted by activation frequency)
+  per_layer - Per-layer pruning rate: Retain X%% of experts per layer (sorted by activation frequency, recommended)
 
-示例用法:
+Example usage:
 
-  # 每层按激活频率保留 50% 专家（推荐）
+  # Per-layer, retain 50%% experts by activation frequency (recommended)
   python select_by_frequency.py \\
       --input ../../results/gpt-oss-20b/activations/gsm8k_25_shapley.json \\
       --output ../../results/gpt-oss-20b/selected_experts/frequency_gsm8k_25_rate0_5.json \\
       --pruning_rate 0.5 \\
       --strategy per_layer
 
-  # 全局按激活频率保留 40% 专家
+  # Global, retain 40%% experts by activation frequency
   python select_by_frequency.py \\
       --input ../../results/gpt-oss-20b/activations/gsm8k_25_shapley.json \\
       --output ../../results/gpt-oss-20b/selected_experts/frequency_gsm8k_25_rate0_4.json \\
@@ -475,72 +475,72 @@ def main():
     )
 
     parser.add_argument(
-        "--input", type=str, required=True, help="aggregated JSON 文件路径（few-shot/results 目录中的文件）"
+        "--input", type=str, required=True, help="Aggregated JSON file path (files in few-shot/results directory)"
     )
     parser.add_argument(
         "--pruning_rate",
         type=float,
         required=True,
-        help="保留率（保留的专家比例，0-1之间，例如 0.4 表示保留40%%，剪掉60%%）",
+        help="Retention rate (ratio of experts to retain, 0-1, e.g. 0.4 means keep 40%%, prune 60%%)",
     )
     parser.add_argument(
         "--strategy",
         type=str,
         choices=["global", "per_layer"],
         default="per_layer",
-        help="剪枝策略（global: 全局剪枝率, per_layer: 每层剪枝率，默认: per_layer）",
+        help="Pruning strategy (global: global pruning rate, per_layer: per-layer pruning rate, default: per_layer)",
     )
     parser.add_argument(
-        "--output", type=str, default="results", help="输出目录（默认: results）"
+        "--output", type=str, default="results", help="Output directory (default: results)"
     )
     parser.add_argument(
-        "--tolerance", type=float, default=0.01, help="二分查找容差（默认: 0.01）"
+        "--tolerance", type=float, default=0.01, help="Binary search tolerance (default: 0.01)"
     )
     parser.add_argument(
         "--max_iterations",
         type=int,
         default=50,
-        help="二分查找最大迭代次数（默认: 50）",
+        help="Binary search max iterations (default: 50)",
     )
     parser.add_argument(
         "--num_experts",
         type=int,
         default=None,
-        help="（可选）每层专家总数。若提供或可推断，将对每层缺失专家补齐，避免 silent bug。",
+        help="(Optional) Total experts per layer. If provided or inferable, missing experts will be filled to avoid silent bugs.",
     )
     parser.add_argument(
         "--strict_missing_experts",
         action="store_true",
-        help="若发现某层缺失专家行，则直接报错退出（默认: 关闭，改为补齐 0）。",
+        help="If missing expert rows are found in a layer, exit with error (default: off, fills with 0 instead).",
     )
 
     args = parser.parse_args()
 
-    # 验证剪枝率
+    # Validate pruning rate
     if not 0 < args.pruning_rate <= 1:
-        parser.error("剪枝率必须在 (0, 1] 范围内")
+        parser.error("Pruning rate must be in the range (0, 1]")
 
-    # 检查输入文件
+    # Check input file
     if not os.path.exists(args.input):
-        parser.error(f"输入文件不存在: {args.input}")
+        parser.error(f"Input file does not exist: {args.input}")
 
     print("=" * 70)
-    print("基于激活频率的专家选择（对照实验）")
+    print("Activation Frequency Based Expert Selection (Baseline Experiment)")
     print("=" * 70)
-    print(f"输入文件: {args.input}")
-    print(f"目标剪枝率: {args.pruning_rate:.1%}")
-    print(f"策略: {args.strategy} (激活频率)")
+    print(f"Input file: {args.input}")
+    print(f"Target pruning rate: {args.pruning_rate:.1%}")
+    print(f"Strategy: {args.strategy} (activation frequency)")
     print("=" * 70)
 
-    # 解析 aggregated JSON 文件
-    print(f"\n解析 aggregated JSON 文件...")
+    # Parse aggregated JSON file
+    print(f"\nParsing aggregated JSON file...")
     df = parse_aggregated_json(args.input)
-    print(f"✓ 解析完成: {len(df)} 条记录")
-    print(f"  层数: {df['Layer'].nunique()}")
-    print(f"  专家ID范围: {df['Expert_ID'].min()} - {df['Expert_ID'].max()}")
-    print(f"  总激活次数: {df['Total_Activations'].sum():,}")
+    print(f"✓ Parsing complete: {len(df)} records")
+    print(f"  Layers: {df['Layer'].nunique()}")
+    print(f"  Expert ID range: {df['Expert_ID'].min()} - {df['Expert_ID'].max()}")
+    print(f"  Total activations: {df['Total_Activations'].sum():,}")
 
-    # 补齐缺失专家（强烈建议）
+    # Fill missing experts (strongly recommended)
     inferred = _infer_num_experts(df) if args.num_experts is None else int(args.num_experts)
     df_completed, missing_by_layer = _complete_layers_with_missing_experts(
         df,
@@ -552,30 +552,30 @@ def main():
         affected = len(missing_by_layer)
         worst_layer = max(missing_by_layer.items(), key=lambda kv: len(kv[1]))
         print(
-            f"⚠️ 检测到缺失专家行：{affected}/{total_layers} 层存在缺失。最严重层 Layer {worst_layer[0]} 缺 {len(worst_layer[1])}/{inferred}。"
+            f"⚠️ Missing expert rows detected: {affected}/{total_layers} layers have missing entries. Worst layer: Layer {worst_layer[0]} missing {len(worst_layer[1])}/{inferred}."
         )
     else:
-        print("✓ 每层专家行完整，无缺失。")
+        print("✓ All layers have complete expert rows, no missing entries.")
 
     df = df_completed
 
-    # 根据策略选择专家
-    print(f"\n使用 {args.strategy} 策略进行二分查找（基于激活频率）...\n")
+    # Select experts based on strategy
+    print(f"\nUsing {args.strategy} strategy for binary search (based on activation frequency)...\n")
 
     if args.strategy == "global":
-        # 全局剪枝率策略
+        # Global pruning rate strategy
         best_alpha, selection_results, actual_rate = find_alpha_for_global_pruning_rate(
             df, args.pruning_rate, args.tolerance, args.max_iterations
         )
     else:
-        # 每层剪枝率策略
+        # Per-layer pruning rate strategy
         best_alpha, selection_results, actual_rate = (
             find_alpha_for_per_layer_pruning_rate(
                 df, args.pruning_rate, args.tolerance, args.max_iterations
             )
         )
 
-    # 保存结果
+    # Save results
     save_results(
         selection_results,
         best_alpha,

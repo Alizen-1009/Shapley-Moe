@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-通用数据集下载工具 - 支持下载任意 HuggingFace 数据集并提取样本用于 few-shot 剪枝
+Universal dataset download tool - Download any HuggingFace dataset and extract samples for few-shot pruning
 """
 
 import json
@@ -9,7 +9,7 @@ import argparse
 from datasets import load_dataset
 
 
-# 预定义的数据集配置
+# Predefined dataset configurations
 DATASET_CONFIGS = {
     "gsm8k": {
         "path": "openai/gsm8k",
@@ -34,7 +34,7 @@ DATASET_CONFIGS = {
         "text_field": "question",
         "answer_field": "best_answer",
     },
-    # 新增数据集
+    # Additional datasets
     "math_500": {
         "path": "HuggingFaceH4/MATH-500",
         "config": None,
@@ -50,20 +50,20 @@ DATASET_CONFIGS = {
         "answer_field": "cop",  # correct option (1-4)
     },
     "gpqa_diamond": {
-        "path": "hendrydong/gpqa_diamond",  # 公开版本，无需授权
+        "path": "hendrydong/gpqa_diamond",  # public version, no authorization required
         "config": None,
         "split": "test",
         "text_field": "problem",
         "answer_field": "solution",
     },
     "ontonotes5": {
-        "path": "SpeedOfMagic/ontonotes_english",  # 可用的公开版本
+        "path": "SpeedOfMagic/ontonotes_english",  # available public version
         "config": None,
         "split": "train",
-        "text_field": "tokens",  # 返回 token 列表
+        "text_field": "tokens",  # returns token list
         "answer_field": "ner_tags",
     },
-    # 新增数据集 - 第二批
+    # Additional datasets - second batch
     "logiqa": {
         "path": "dmayhem93/agieval-logiqa-en",
         "config": None,
@@ -80,14 +80,14 @@ DATASET_CONFIGS = {
     },
     "aime25": {
         "path": "opencompass/AIME2025",
-        "config": "AIME2025-I",  # 可选: AIME2025-I 或 AIME2025-II
+        "config": "AIME2025-I",  # optional: AIME2025-I or AIME2025-II
         "split": "test",
         "text_field": "question",
         "answer_field": "answer",
     },
     "biomix_qa": {
         "path": "kg-rag/BiomixQA",
-        "config": "mcq",  # 可选: mcq 或 true_false
+        "config": "mcq",  # optional: mcq or true_false
         "split": "train",
         "text_field": "text",
         "answer_field": "correct_answer",
@@ -99,7 +99,7 @@ DATASET_CONFIGS = {
         "text_field": "question",
         "answer_field": "final_decision",
     },
-    # ARC 数据集 (AI2 Reasoning Challenge) - 评测使用 test 划分
+    # ARC dataset (AI2 Reasoning Challenge) - evaluation uses test split
     "arc_challenge": {
         "path": "allenai/ai2_arc",
         "config": "ARC-Challenge",
@@ -130,21 +130,21 @@ def download_and_extract(
     answer_field: str = None,
 ):
     """
-    下载数据集并提取样本
+    Download dataset and extract samples
 
     Args:
-        dataset_name: 数据集名称（预定义）或自定义路径
-        num_samples: 要提取的样本数量
-        output_file: 输出文件名（默认自动生成）
-        with_answers: 是否包含答案
-        dataset_path: 自定义数据集路径（覆盖预定义）
-        dataset_config: 数据集配置名称
-        split: 数据集分割（train/test/validation）
-        text_field: 文本字段名称
-        answer_field: 答案字段名称
+        dataset_name: Dataset name (predefined) or custom path
+        num_samples: Number of samples to extract
+        output_file: Output filename (default: auto-generated)
+        with_answers: Whether to include answers
+        dataset_path: Custom dataset path (overrides predefined)
+        dataset_config: Dataset config name
+        split: Dataset split (train/test/validation)
+        text_field: Text field name
+        answer_field: Answer field name
     """
 
-    # 如果是预定义的数据集，使用配置
+    # If it's a predefined dataset, use config
     if dataset_name in DATASET_CONFIGS and not dataset_path:
         config = DATASET_CONFIGS[dataset_name]
         dataset_path = config["path"]
@@ -153,67 +153,67 @@ def download_and_extract(
         text_field = text_field or config["text_field"]
         answer_field = answer_field or config.get("answer_field")
     else:
-        # 自定义数据集
+        # Custom dataset
         dataset_path = dataset_path or dataset_name
         if not text_field:
-            text_field = "text"  # 默认文本字段
+            text_field = "text"  # default text field
 
-    print(f"正在下载数据集: {dataset_path}")
-    print(f"  配置: {dataset_config}")
-    print(f"  分割: {split}")
-    print(f"  样本数: {num_samples}")
+    print(f"Downloading dataset: {dataset_path}")
+    print(f"  Config: {dataset_config}")
+    print(f"  Split: {split}")
+    print(f"  Number of samples: {num_samples}")
 
-    # 下载数据集
+    # Download dataset
     try:
         if dataset_config:
             dataset = load_dataset(dataset_path, dataset_config, split=split)
         else:
             dataset = load_dataset(dataset_path, split=split)
     except Exception as e:
-        print(f"❌ 下载失败: {e}")
-        print(f"\n提示: 如果网络问题，请设置环境变量:")
+        print(f"❌ Download failed: {e}")
+        print(f"\nHint: If you have network issues, set the environment variable:")
         print(f"  export HF_ENDPOINT=https://hf-mirror.com")
         return None
 
-    print(f"✓ 数据集下载完成！共 {len(dataset)} 条数据")
-    print(f"正在提取前 {num_samples} 条数据...")
+    print(f"✓ Dataset download complete! Total {len(dataset)} entries")
+    print(f"Extracting first {num_samples} entries...")
 
-    # 提取样本
+    # Extract samples
     samples = []
     for i in range(min(num_samples, len(dataset))):
         item = dataset[i]
 
-        # 获取文本
+        # Get text
         if text_field in item:
             text = item[text_field]
         else:
-            # 如果找不到指定字段，尝试找第一个字符串字段
+            # If specified field not found, try to find the first string field
             for key, value in item.items():
                 if isinstance(value, str):
                     text = value
                     text_field = key
-                    print(f"⚠️  使用字段 '{key}' 作为文本")
+                    print(f"⚠️  Using field '{key}' as text")
                     break
             else:
-                text = str(item)  # 最后的fallback
+                text = str(item)  # last resort fallback
 
-        # 如果 text 是列表（如 tokens），拼接成字符串
+        # If text is a list (e.g. tokens), join into string
         if isinstance(text, list):
             text = " ".join(str(t) for t in text)
 
-        # 构建样本
+        # Build sample
         sample = {"text": text}
 
-        # 如果需要包含答案
+        # If answers should be included
         if with_answers and answer_field and answer_field in item:
             answer = item[answer_field]
-            # 根据答案类型构建完整文本
+            # Build complete text based on answer type
             if isinstance(answer, str):
                 sample["text"] = f"{text}\n{answer}"
                 sample["question"] = text
                 sample["answer"] = answer
             elif isinstance(answer, list):
-                sample["text"] = f"{text}\n选项: {', '.join(map(str, answer))}"
+                sample["text"] = f"{text}\nChoices: {', '.join(map(str, answer))}"
                 sample["question"] = text
                 sample["choices"] = answer
             else:
@@ -221,12 +221,12 @@ def download_and_extract(
 
         samples.append(sample)
 
-    # 生成输出文件名
+    # Generate output filename
     if not output_file:
         suffix = "_with_answers" if with_answers else ""
         output_file = f"{dataset_name}_{num_samples}{suffix}.json"
 
-    # 保存到 results 文件夹
+    # Save to results folder
     script_dir = os.path.dirname(__file__)
     results_dir = os.path.join(script_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
@@ -234,13 +234,13 @@ def download_and_extract(
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(samples, f, indent=4, ensure_ascii=False)
 
-    print(f"✓ 成功保存 {len(samples)} 条数据到: {output_path}")
+    print(f"✓ Successfully saved {len(samples)} entries to: {output_path}")
 
-    # 打印示例
-    print("\n前3条数据示例:")
+    # Print examples
+    print("\nFirst 3 data examples:")
     print("=" * 70)
     for i, sample in enumerate(samples[:3], 1):
-        print(f"\n示例 {i}:")
+        print(f"\nExample {i}:")
         text_preview = sample["text"][:150].replace("\n", " ")
         print(f"  {text_preview}...")
     print("=" * 70)
@@ -249,38 +249,38 @@ def download_and_extract(
 
 
 def list_available_datasets():
-    """列出所有预定义的数据集"""
-    print("\n可用的预定义数据集:")
+    """List all available predefined datasets"""
+    print("\nAvailable predefined datasets:")
     print("=" * 70)
     for name, config in DATASET_CONFIGS.items():
         print(f"\n{name}:")
-        print(f"  路径: {config['path']}")
-        print(f"  配置: {config.get('config', 'None')}")
-        print(f"  分割: {config['split']}")
-        print(f"  文本字段: {config['text_field']}")
+        print(f"  Path: {config['path']}")
+        print(f"  Config: {config.get('config', 'None')}")
+        print(f"  Split: {config['split']}")
+        print(f"  Text field: {config['text_field']}")
     print("=" * 70)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="通用数据集下载工具 - 下载任意 HuggingFace 数据集并提取样本",
+        description="Universal dataset download tool - Download any HuggingFace dataset and extract samples",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例用法:
+Example usage:
 
-  # 下载 GSM8K 前 25 条数据
+  # Download first 25 entries from GSM8K
   python download_dataset.py --dataset gsm8k --num_samples 25
 
-  # 下载 GSM8K 前 50 条数据（包含答案）
+  # Download first 50 entries from GSM8K (with answers)
   python download_dataset.py --dataset gsm8k --num_samples 50 --with_answers
 
-  # 下载 HellaSwag 前 100 条数据
+  # Download first 100 entries from HellaSwag
   python download_dataset.py --dataset hellaswag --num_samples 100
 
-  # 下载自定义数据集
+  # Download custom dataset
   python download_dataset.py --dataset custom --dataset_path "username/dataset-name" --num_samples 30
 
-  # 列出所有可用的预定义数据集
+  # List all available predefined datasets
   python download_dataset.py --list
         """,
     )
@@ -288,57 +288,57 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        help="数据集名称（gsm8k/truthful_qa/math_500/gpqa_diamond 等）或自定义名称",
+        help="Dataset name (gsm8k/truthful_qa/math_500/gpqa_diamond etc.) or custom name",
     )
     parser.add_argument(
-        "--num_samples", type=int, default=25, help="提取的样本数量（默认: 25）"
+        "--num_samples", type=int, default=25, help="Number of samples to extract (default: 25)"
     )
     parser.add_argument(
-        "--output", type=str, help="输出文件名（默认: {dataset}_{num_samples}.json）"
+        "--output", type=str, help="Output filename (default: {dataset}_{num_samples}.json)"
     )
     parser.add_argument(
-        "--with_answers", action="store_true", help="是否包含答案（用于 few-shot 学习）"
+        "--with_answers", action="store_true", help="Whether to include answers (for few-shot learning)"
     )
     parser.add_argument(
         "--dataset_path",
         type=str,
-        help="自定义数据集 HuggingFace 路径（例如: openai/gsm8k）",
+        help="Custom dataset HuggingFace path (e.g.: openai/gsm8k)",
     )
     parser.add_argument(
-        "--dataset_config", type=str, help="数据集配置名称（例如: main）"
+        "--dataset_config", type=str, help="Dataset config name (e.g.: main)"
     )
     parser.add_argument(
         "--split",
         type=str,
         default="train",
-        help="数据集分割（train/test/validation，默认: train）",
+        help="Dataset split (train/test/validation, default: train)",
     )
     parser.add_argument(
-        "--text_field", type=str, help="文本字段名称（例如: question, text）"
+        "--text_field", type=str, help="Text field name (e.g.: question, text)"
     )
     parser.add_argument(
-        "--answer_field", type=str, help="答案字段名称（例如: answer, choices）"
+        "--answer_field", type=str, help="Answer field name (e.g.: answer, choices)"
     )
     parser.add_argument(
-        "--list", action="store_true", help="列出所有可用的预定义数据集"
+        "--list", action="store_true", help="List all available predefined datasets"
     )
 
     args = parser.parse_args()
 
-    # 列出数据集
+    # List datasets
     if args.list:
         list_available_datasets()
         return
 
-    # 检查必需参数
+    # Check required arguments
     if not args.dataset:
-        parser.error("请指定 --dataset 参数，或使用 --list 查看可用数据集")
+        parser.error("Please specify --dataset, or use --list to view available datasets")
 
     print("=" * 70)
-    print("通用数据集下载工具")
+    print("Universal Dataset Download Tool")
     print("=" * 70)
 
-    # 下载和提取
+    # Download and extract
     download_and_extract(
         dataset_name=args.dataset,
         num_samples=args.num_samples,
@@ -351,7 +351,7 @@ def main():
         answer_field=args.answer_field,
     )
 
-    print("\n✓ 全部完成！")
+    print("\n✓ All done!")
 
 
 if __name__ == "__main__":

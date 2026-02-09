@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-基于 Shapley 值的专家选择工具
+Shapley Value Based Expert Selection Tool
 
-支持四种剪枝策略：
+Supports four pruning strategies:
 
-1. topk_per_layer  - 每层选择 Shapley 值最高的 top-k 专家（推荐，简单直接）
-2. topk_global     - 全局选择 Shapley 值最高的专家
-3. alpha_per_layer - 使用 alpha 因子，每层累积 Shapley 值达到 alpha 比例
-4. alpha_global    - 使用 alpha 因子，全局累积
+1. topk_per_layer  - Select top-k experts with highest Shapley values per layer (recommended, simple and direct)
+2. topk_global     - Select experts with highest Shapley values globally
+3. alpha_per_layer - Use alpha factor, select fewest experts whose cumulative Shapley values reach alpha ratio per layer
+4. alpha_global    - Use alpha factor, cumulate globally
 
-策略对比：
-- topk: 直接按 Shapley 值大小排序，选择前 k 个。简单、可解释性强。
-- alpha: 选择累积 Shapley 值达到总量 alpha 比例的最少专家。考虑了贡献分布。
+Strategy comparison:
+- topk: Directly sort by Shapley value magnitude, select top k. Simple, highly interpretable.
+- alpha: Select the fewest experts whose cumulative Shapley values reach alpha ratio of total. Considers contribution distribution.
 
-- per_layer: 每层独立选择，保证每层都有足够专家。
-- global: 全局统一选择，某些层可能专家较少。
+- per_layer: Select independently per layer, ensures sufficient experts in each layer.
+- global: Select uniformly across all layers, some layers may have fewer experts.
 """
 
 import pandas as pd
@@ -27,9 +27,9 @@ from collections import defaultdict
 
 
 def _infer_num_experts(df: pd.DataFrame) -> int:
-    """从数据中推断专家总数（默认 max(Expert_ID)+1）。"""
+    """Infer total number of experts from data (default max(Expert_ID)+1)."""
     if "Expert_ID" not in df.columns or df["Expert_ID"].empty:
-        raise ValueError("输入数据缺少 Expert_ID，无法推断 num_experts。")
+        raise ValueError("Input data missing Expert_ID, cannot infer num_experts.")
     return int(df["Expert_ID"].max()) + 1
 
 
@@ -40,15 +40,15 @@ def _complete_layers_with_missing_experts(
     missing_sample_limit: int = 20,
 ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
     """
-    强制把每层补齐为 [0..num_experts-1] 的完整 Expert_ID 集合。
-    缺失行补 Shapley_Value=0
+    Force each layer to have a complete set of Expert_IDs [0..num_experts-1].
+    Missing rows are filled with Shapley_Value=0
     """
     if "Layer" not in df.columns or "Expert_ID" not in df.columns:
-        raise ValueError("输入 CSV 必须包含 Layer 与 Expert_ID 两列。")
+        raise ValueError("Input CSV must contain Layer and Expert_ID columns.")
 
     num_experts = int(num_experts)
     if num_experts <= 0:
-        raise ValueError("num_experts 必须为正整数。")
+        raise ValueError("num_experts must be a positive integer.")
 
     missing_by_layer: Dict[int, List[int]] = {}
     layers = sorted(df["Layer"].unique().tolist())
@@ -59,7 +59,7 @@ def _complete_layers_with_missing_experts(
 
     has_total_acts = "Total_Activations" in df.columns
     if "Shapley_Value" not in df.columns:
-        raise ValueError("输入 CSV 必须包含 Shapley_Value 列。")
+        raise ValueError("Input CSV must contain Shapley_Value column.")
 
     completed_parts = []
     full_index = list(range(num_experts))
@@ -74,7 +74,7 @@ def _complete_layers_with_missing_experts(
         if strict_missing and missing:
             sample = missing[:missing_sample_limit]
             raise ValueError(
-                f"Layer {layer_id} 缺失 {len(missing)}/{num_experts} 个专家（样例: {sample}）。"
+                f"Layer {layer_id} missing {len(missing)}/{num_experts} experts (sample: {sample})."
             )
 
         layer_df = layer_df.set_index("Expert_ID").reindex(full_index)
@@ -93,7 +93,7 @@ def _complete_layers_with_missing_experts(
 
 
 # =============================================================================
-# 策略 1: TopK Per Layer - 每层选择 Shapley 值最高的 top-k 专家
+# Strategy 1: TopK Per Layer - Select top-k experts with highest Shapley values per layer
 # =============================================================================
 
 def select_topk_per_layer(
@@ -102,38 +102,38 @@ def select_topk_per_layer(
     num_experts: int
 ) -> Dict[int, List[int]]:
     """
-    每层选择 Shapley 值最高的 top-k 专家
+    Select top-k experts with highest Shapley values per layer
     
     Args:
-        df: Shapley 值数据
-        pruning_rate: 保留率 (0.0-1.0)
-        num_experts: 每层专家总数
+        df: Shapley value data
+        pruning_rate: Retention rate (0.0-1.0)
+        num_experts: Total experts per layer
         
     Returns:
         {layer_id: [selected_expert_ids]}
     """
     keep_count = max(1, int(num_experts * pruning_rate))
     
-    print(f"TopK Per Layer 策略:")
-    print(f"  每层保留 {keep_count}/{num_experts} 个专家 (保留率: {pruning_rate:.1%})")
+    print(f"TopK Per Layer strategy:")
+    print(f"  Keeping {keep_count}/{num_experts} experts per layer (retention rate: {pruning_rate:.1%})")
     
     selection_results = {}
     
     for layer_id, group in df.groupby("Layer"):
-        # 按 Shapley 值降序排序
+        # Sort by Shapley value in descending order
         sorted_experts = group.sort_values("Shapley_Value", ascending=False)
-        # 选择前 k 个
+        # Select top k
         selected = sorted_experts.head(keep_count)["Expert_ID"].astype(int).tolist()
         selection_results[int(layer_id)] = sorted(selected)
     
     total_selected = sum(len(v) for v in selection_results.values())
-    print(f"  总保留: {total_selected} 个专家")
+    print(f"  Total retained: {total_selected} experts")
     
     return selection_results
 
 
 # =============================================================================
-# 策略 2: TopK Global - 全局选择 Shapley 值最高的专家
+# Strategy 2: TopK Global - Select experts with highest Shapley values globally
 # =============================================================================
 
 def select_topk_global(
@@ -141,11 +141,11 @@ def select_topk_global(
     pruning_rate: float
 ) -> Dict[int, List[int]]:
     """
-    全局选择 Shapley 值最高的专家
+    Select experts with highest Shapley values globally
     
     Args:
-        df: Shapley 值数据
-        pruning_rate: 保留率 (0.0-1.0)
+        df: Shapley value data
+        pruning_rate: Retention rate (0.0-1.0)
         
     Returns:
         {layer_id: [selected_expert_ids]}
@@ -153,46 +153,46 @@ def select_topk_global(
     total_experts = len(df)
     keep_count = max(df["Layer"].nunique(), int(total_experts * pruning_rate))
     
-    print(f"TopK Global 策略:")
-    print(f"  全局保留 {keep_count}/{total_experts} 个专家 (保留率: {pruning_rate:.1%})")
+    print(f"TopK Global strategy:")
+    print(f"  Keeping {keep_count}/{total_experts} experts globally (retention rate: {pruning_rate:.1%})")
     
-    # 全局按 Shapley 值排序
+    # Sort globally by Shapley value
     sorted_df = df.sort_values("Shapley_Value", ascending=False)
     
-    # 选择 top-k
+    # Select top-k
     selected_df = sorted_df.head(keep_count)
     
-    # 按层分组
+    # Group by layer
     selection_results = defaultdict(list)
     for _, row in selected_df.iterrows():
         selection_results[int(row["Layer"])].append(int(row["Expert_ID"]))
     
-    # 确保每层至少有一个专家
+    # Ensure at least one expert per layer
     for layer_id in df["Layer"].unique():
         layer_id = int(layer_id)
         if layer_id not in selection_results or not selection_results[layer_id]:
-            # 选择该层 Shapley 值最高的专家
+            # Select the expert with highest Shapley value in this layer
             layer_df = df[df["Layer"] == layer_id]
             best_expert = layer_df.loc[layer_df["Shapley_Value"].idxmax(), "Expert_ID"]
             selection_results[layer_id].append(int(best_expert))
     
-    # 排序
+    # Sort
     result = {k: sorted(v) for k, v in selection_results.items()}
     
     total_selected = sum(len(v) for v in result.values())
-    print(f"  实际保留: {total_selected} 个专家")
+    print(f"  Actual retained: {total_selected} experts")
     
     return dict(result)
 
 
 # =============================================================================
-# 策略 3: Alpha Per Layer - 每层累积 Shapley 值达到 alpha 比例
+# Strategy 3: Alpha Per Layer - Cumulative Shapley values reaching alpha ratio per layer
 # =============================================================================
 
 def select_by_alpha(df: pd.DataFrame, alpha: float) -> Tuple[Dict[int, List[int]], int]:
     """
-    根据 alpha 因子选择专家（每层独立）
-    选择累积 Shapley 值达到该层总量 alpha 比例的最少专家
+    Select experts based on alpha factor (independently per layer)
+    Select the fewest experts whose cumulative Shapley values reach alpha ratio of layer total
     """
     selection_results = {}
     total_selected = 0
@@ -225,14 +225,14 @@ def select_alpha_per_layer(
     max_iterations: int = 50,
 ) -> Tuple[Dict[int, List[int]], float]:
     """
-    使用二分查找找到 alpha，使得每层平均保留率接近目标
+    Use binary search to find alpha such that average retention rate per layer is close to target
     """
     num_layers = df["Layer"].nunique()
     experts_per_layer = int(df.groupby("Layer").size().max())
 
-    print(f"Alpha Per Layer 策略:")
-    print(f"  目标每层保留: {int(experts_per_layer * pruning_rate)}/{experts_per_layer} (保留率: {pruning_rate:.1%})")
-    print(f"  开始二分查找 alpha...")
+    print(f"Alpha Per Layer strategy:")
+    print(f"  Target per-layer retention: {int(experts_per_layer * pruning_rate)}/{experts_per_layer} (retention rate: {pruning_rate:.1%})")
+    print(f"  Starting binary search for alpha...")
 
     left, right = 0.0, 1.0
     best_alpha = 0.5
@@ -250,7 +250,7 @@ def select_alpha_per_layer(
         abs_diff = abs(diff)
 
         if iteration < 5 or iteration % 10 == 0:
-            print(f"    迭代 {iteration+1}: alpha={mid_alpha:.4f}, 平均每层={avg_selected_per_layer:.1f}")
+            print(f"    Iteration {iteration+1}: alpha={mid_alpha:.4f}, avg per layer={avg_selected_per_layer:.1f}")
 
         if abs_diff < best_diff:
             best_diff = abs_diff
@@ -259,7 +259,7 @@ def select_alpha_per_layer(
 
         actual_rate = avg_selected_per_layer / experts_per_layer
         if abs(actual_rate - pruning_rate) < tolerance:
-            print(f"  ✓ 找到 alpha={mid_alpha:.4f}")
+            print(f"  ✓ Found alpha={mid_alpha:.4f}")
             break
 
         if avg_selected_per_layer < target_per_layer:
@@ -268,14 +268,14 @@ def select_alpha_per_layer(
             right = mid_alpha
 
     total_selected = sum(len(v) for v in best_selection.values())
-    print(f"  最佳 alpha = {best_alpha:.4f}")
-    print(f"  总保留: {total_selected} 个专家")
+    print(f"  Best alpha = {best_alpha:.4f}")
+    print(f"  Total retained: {total_selected} experts")
 
     return best_selection, best_alpha
 
 
 # =============================================================================
-# 策略 4: Alpha Global - 全局累积 Shapley 值达到 alpha 比例
+# Strategy 4: Alpha Global - Cumulative Shapley values reaching alpha ratio globally
 # =============================================================================
 
 def select_alpha_global(
@@ -285,14 +285,14 @@ def select_alpha_global(
     max_iterations: int = 50,
 ) -> Tuple[Dict[int, List[int]], float]:
     """
-    使用二分查找找到 alpha，使得全局保留率接近目标
+    Use binary search to find alpha such that global retention rate is close to target
     """
     total_experts = len(df)
     target_count = int(total_experts * pruning_rate)
 
-    print(f"Alpha Global 策略:")
-    print(f"  目标保留: {target_count}/{total_experts} (保留率: {pruning_rate:.1%})")
-    print(f"  开始二分查找 alpha...")
+    print(f"Alpha Global strategy:")
+    print(f"  Target retention: {target_count}/{total_experts} (retention rate: {pruning_rate:.1%})")
+    print(f"  Starting binary search for alpha...")
 
     left, right = 0.0, 1.0
     best_alpha = 0.5
@@ -307,7 +307,7 @@ def select_alpha_global(
         abs_diff = abs(diff)
 
         if iteration < 5 or iteration % 10 == 0:
-            print(f"    迭代 {iteration+1}: alpha={mid_alpha:.4f}, 选中={selected_count}")
+            print(f"    Iteration {iteration+1}: alpha={mid_alpha:.4f}, selected={selected_count}")
 
         if abs_diff < best_diff:
             best_diff = abs_diff
@@ -316,7 +316,7 @@ def select_alpha_global(
 
         actual_rate = selected_count / total_experts
         if abs(actual_rate - pruning_rate) < tolerance:
-            print(f"  ✓ 找到 alpha={mid_alpha:.4f}")
+            print(f"  ✓ Found alpha={mid_alpha:.4f}")
             break
 
         if selected_count < target_count:
@@ -325,14 +325,14 @@ def select_alpha_global(
             right = mid_alpha
 
     total_selected = sum(len(v) for v in best_selection.values())
-    print(f"  最佳 alpha = {best_alpha:.4f}")
-    print(f"  总保留: {total_selected} 个专家")
+    print(f"  Best alpha = {best_alpha:.4f}")
+    print(f"  Total retained: {total_selected} experts")
 
     return best_selection, best_alpha
 
 
 # =============================================================================
-# 保存结果
+# Save Results
 # =============================================================================
 
 def save_results(
@@ -343,19 +343,19 @@ def save_results(
     output_file: str,
     alpha: Optional[float] = None,
 ):
-    """保存选择结果"""
+    """Save selection results"""
     
     os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else ".", exist_ok=True)
 
-    # 计算统计信息
+    # Calculate statistics
     total_experts = len(df)
     total_selected = sum(len(v) for v in selection_results.values())
     actual_rate = total_selected / total_experts
 
-    # 保存结果（转换为字符串键）
+    # Save results (convert to string keys)
     output_data = {str(k): sorted(v) for k, v in selection_results.items()}
     
-    # 添加元数据
+    # Add metadata
     output_data["_metadata"] = {
         "method": "shapley",
         "strategy": strategy,
@@ -371,47 +371,47 @@ def save_results(
         json.dump(output_data, f, indent=2)
 
     print(f"\n{'='*70}")
-    print(f"选择完成！")
+    print(f"Selection completed!")
     print(f"{'='*70}")
-    print(f"策略: {strategy}")
-    print(f"目标保留率: {pruning_rate:.1%}")
-    print(f"实际保留率: {actual_rate:.1%}")
-    print(f"保留专家: {total_selected}/{total_experts}")
+    print(f"Strategy: {strategy}")
+    print(f"Target retention rate: {pruning_rate:.1%}")
+    print(f"Actual retention rate: {actual_rate:.1%}")
+    print(f"Retained experts: {total_selected}/{total_experts}")
     if alpha is not None:
         print(f"Alpha: {alpha:.4f}")
-    print(f"\n结果已保存: {output_file}")
+    print(f"\nResults saved: {output_file}")
     print(f"{'='*70}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="基于 Shapley 值的专家选择工具",
+        description="Shapley Value Based Expert Selection Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-四种剪枝策略：
+Four pruning strategies:
 
-  topk_per_layer  - 每层选择 Shapley 值最高的 top-k 专家（推荐）
-  topk_global     - 全局选择 Shapley 值最高的专家
-  alpha_per_layer - 每层累积 Shapley 值达到 alpha 比例
-  alpha_global    - 全局累积 Shapley 值达到 alpha 比例
+  topk_per_layer  - Select top-k experts with highest Shapley values per layer (recommended)
+  topk_global     - Select experts with highest Shapley values globally
+  alpha_per_layer - Cumulative Shapley values reaching alpha ratio per layer
+  alpha_global    - Cumulative Shapley values reaching alpha ratio globally
 
-示例用法：
+Example usage:
 
-  # 每层 TopK（推荐，简单直接）
+  # Per-layer TopK (recommended, simple and direct)
   python select_by_shapley.py \\
       --input gsm8k_25_shapley.csv \\
       --output selected_experts.json \\
       --pruning_rate 0.5 \\
       --strategy topk_per_layer
 
-  # 全局 TopK
+  # Global TopK
   python select_by_shapley.py \\
       --input gsm8k_25_shapley.csv \\
       --output selected_experts.json \\
       --pruning_rate 0.5 \\
       --strategy topk_global
 
-  # Alpha 每层（考虑贡献分布）
+  # Alpha per layer (considers contribution distribution)
   python select_by_shapley.py \\
       --input gsm8k_25_shapley.csv \\
       --output selected_experts.json \\
@@ -420,70 +420,70 @@ def main():
         """,
     )
 
-    parser.add_argument("--input", type=str, required=True, help="Shapley 值 CSV 文件路径")
-    parser.add_argument("--output", type=str, required=True, help="输出文件路径")
+    parser.add_argument("--input", type=str, required=True, help="Shapley value CSV file path")
+    parser.add_argument("--output", type=str, required=True, help="Output file path")
     parser.add_argument(
         "--pruning_rate",
         type=float,
         required=True,
-        help="保留率 (0.0-1.0)，例如 0.5 表示保留 50%%",
+        help="Retention rate (0.0-1.0), e.g. 0.5 means keep 50%%",
     )
     parser.add_argument(
         "--strategy",
         type=str,
         choices=["alpha_per_layer", "alpha_global", "topk_per_layer", "topk_global",
-                 "per_layer", "global"],  # 兼容旧参数
+                 "per_layer", "global"],  # Backward compatible
         default="alpha_per_layer",
-        help="剪枝策略（默认: alpha_per_layer）",
+        help="Pruning strategy (default: alpha_per_layer)",
     )
-    parser.add_argument("--num_experts", type=int, default=None, help="每层专家总数")
-    parser.add_argument("--tolerance", type=float, default=0.01, help="Alpha 策略的容差")
-    parser.add_argument("--max_iterations", type=int, default=50, help="Alpha 策略的最大迭代次数")
+    parser.add_argument("--num_experts", type=int, default=None, help="Total experts per layer")
+    parser.add_argument("--tolerance", type=float, default=0.01, help="Tolerance for Alpha strategy")
+    parser.add_argument("--max_iterations", type=int, default=50, help="Max iterations for Alpha strategy")
 
     args = parser.parse_args()
 
-    # 兼容旧参数名
+    # Backward compatible parameter names
     if args.strategy == "per_layer":
         args.strategy = "alpha_per_layer"
-        print("注意: 'per_layer' 已重命名为 'alpha_per_layer'")
+        print("Note: 'per_layer' has been renamed to 'alpha_per_layer'")
     elif args.strategy == "global":
         args.strategy = "alpha_global"
-        print("注意: 'global' 已重命名为 'alpha_global'")
+        print("Note: 'global' has been renamed to 'alpha_global'")
 
     if not 0 < args.pruning_rate <= 1:
-        parser.error("pruning_rate 必须在 (0, 1] 范围内")
+        parser.error("pruning_rate must be in the range (0, 1]")
 
     if not os.path.exists(args.input):
-        parser.error(f"输入文件不存在: {args.input}")
+        parser.error(f"Input file does not exist: {args.input}")
 
     print("=" * 70)
-    print("Shapley 值专家选择")
+    print("Shapley Value Expert Selection")
     print("=" * 70)
-    print(f"输入文件: {args.input}")
-    print(f"目标保留率: {args.pruning_rate:.1%}")
-    print(f"策略: {args.strategy}")
+    print(f"Input file: {args.input}")
+    print(f"Target retention rate: {args.pruning_rate:.1%}")
+    print(f"Strategy: {args.strategy}")
     print("=" * 70)
 
-    # 读取数据
-    print(f"\n读取数据...")
+    # Read data
+    print(f"\nReading data...")
     df = pd.read_csv(args.input)
-    print(f"✓ 读取完成: {len(df)} 条记录")
+    print(f"✓ Read complete: {len(df)} records")
 
-    # 补齐缺失专家
+    # Fill missing experts
     inferred = _infer_num_experts(df) if args.num_experts is None else int(args.num_experts)
     df_completed, missing_by_layer = _complete_layers_with_missing_experts(df, num_experts=inferred)
     
     if missing_by_layer:
         affected = len(missing_by_layer)
-        print(f"⚠️ {affected} 层存在缺失专家，已补齐为 Shapley=0")
+        print(f"⚠️ {affected} layers have missing experts, filled with Shapley=0")
     else:
-        print("✓ 每层专家完整")
+        print("✓ All layers have complete experts")
 
     df = df_completed
-    print(f"专家总数: {len(df)} ({df['Layer'].nunique()} 层 × {inferred} 专家/层)")
+    print(f"Total experts: {len(df)} ({df['Layer'].nunique()} layers × {inferred} experts/layer)")
     print()
 
-    # 执行选择
+    # Execute selection
     alpha = None
     
     if args.strategy == "topk_per_layer":
@@ -502,7 +502,7 @@ def main():
             df, args.pruning_rate, args.tolerance, args.max_iterations
         )
 
-    # 保存结果
+    # Save results
     save_results(
         selection_results,
         args.strategy,
