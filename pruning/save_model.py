@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-MoE 模型专家剪枝工具
+MoE Model Expert Pruning Tool
 
-功能：
-1. 加载原始模型
-2. 根据 expert selection JSON 文件，对被剪掉的专家进行处理
-3. 保存为 safetensor 格式的完整模型
+Features:
+1. Load original model
+2. Process pruned experts based on expert selection JSON file
+3. Save as a complete model in safetensor format
 
-剪枝策略：
-- zero_weights: 将被剪掉的专家权重置零（默认）
-- gate_bias: 给被剪掉的专家在 gate 层添加大负偏置，使其不被选中
-- both: 同时使用两种策略
-- auto: 根据剪枝方法自动选择策略
+Pruning strategies:
+- zero_weights: Zero out the weights of pruned experts (default)
+- gate_bias: Add a large negative bias to pruned experts in the gate layer so they won't be selected
+- both: Use both strategies simultaneously
+- auto: Automatically select strategy based on pruning method
 
-不同剪枝方法的默认策略：
+Default strategies for different pruning methods:
 - shapley: zero_weights
 - easyep: zero_weights
 - reap: zero_weights
@@ -31,17 +31,17 @@ import re
 from typing import Dict, List, Set, Optional, Tuple
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Gate 偏置的大负数值，使被剪掉的专家选择概率接近 0
+# Large negative value for gate bias, making pruned experts' selection probability close to 0
 GATE_BIAS_VALUE = -1e9
 
-# 不同剪枝方法对应的默认策略
-# 可以根据需要修改各方法的默认策略
+# Default strategies for different pruning methods
+# Modify the default strategy for each method as needed
 METHOD_DEFAULT_STRATEGIES = {
     "shapley": "zero_weights",
     "easyep": "zero_weights",
@@ -52,10 +52,10 @@ METHOD_DEFAULT_STRATEGIES = {
 }
 
 def detect_method_from_filename(filename: str) -> Optional[str]:
-    """从选择文件名中检测剪枝方法"""
+    """Detect pruning method from selection filename"""
     basename = os.path.basename(filename).lower()
     
-    # 检测各种方法
+    # Detect various methods
     if basename.startswith("shapley"):
         return "shapley"
     elif basename.startswith("easyep") or "easyep" in basename:
@@ -72,21 +72,21 @@ def detect_method_from_filename(filename: str) -> Optional[str]:
     return None
 
 def get_strategy_for_method(method: Optional[str], user_strategy: str) -> str:
-    """根据方法和用户指定的策略确定最终策略"""
-    # 如果用户明确指定了策略（非 auto），直接使用
+    """Determine the final strategy based on method and user-specified strategy"""
+    # If user explicitly specified a strategy (not auto), use it directly
     if user_strategy != "auto":
         return user_strategy
     
-    # auto 模式：根据方法自动选择
+    # Auto mode: automatically select based on method
     if method and method in METHOD_DEFAULT_STRATEGIES:
         return METHOD_DEFAULT_STRATEGIES[method]
     
-    # 默认使用 zero_weights
+    # Default to zero_weights
     return "zero_weights"
 
 
 class ModelPruner:
-    """MoE 模型专家剪枝工具"""
+    """MoE Model Expert Pruning Tool"""
 
     def __init__(
         self,
@@ -98,28 +98,28 @@ class ModelPruner:
     ):
         """
         Args:
-            model_path: 原始模型路径
-            selection_json_path: 专家选择 JSON 文件路径
-            output_dir: 输出模型保存目录
-            device_map: 设备映射策略
-            pruning_strategy: 剪枝策略
-                - "auto": 根据剪枝方法自动选择（默认）
-                - "zero_weights": 将专家权重置零
-                - "gate_bias": 修改 gate 偏置，使被剪掉的专家不会被选中
-                - "both": 同时使用两种策略
+            model_path: Original model path
+            selection_json_path: Expert selection JSON file path
+            output_dir: Output model save directory
+            device_map: Device mapping strategy
+            pruning_strategy: Pruning strategy
+                - "auto": Automatically select based on pruning method (default)
+                - "zero_weights": Zero out expert weights
+                - "gate_bias": Modify gate bias so pruned experts won't be selected
+                - "both": Use both strategies simultaneously
         """
         self.model_path = model_path
         self.selection_json_path = selection_json_path
         self.output_dir = output_dir
         self.device_map = device_map
-        self.user_pruning_strategy = pruning_strategy  # 用户指定的策略
-        self.pruning_strategy = pruning_strategy  # 最终使用的策略（可能被自动调整）
-        self.detected_method = None  # 检测到的剪枝方法
+        self.user_pruning_strategy = pruning_strategy  # User-specified strategy
+        self.pruning_strategy = pruning_strategy  # Final strategy (may be auto-adjusted)
+        self.detected_method = None  # Detected pruning method
         self.model = None
         self.tokenizer = None
         self.selected_experts: Dict[str, List[int]] = {}
         
-        # 统计信息
+        # Statistics
         self.stats = {
             "gate_modified_layers": 0,
             "zeroed_experts": 0,
@@ -127,32 +127,32 @@ class ModelPruner:
         }
 
     def load_selection_file(self) -> Dict[str, List[int]]:
-        """加载专家选择文件"""
-        logger.info(f"加载专家选择文件: {self.selection_json_path}")
+        """Load expert selection file"""
+        logger.info(f"Loading expert selection file: {self.selection_json_path}")
         with open(self.selection_json_path, "r") as f:
             data = json.load(f)
 
-        # 打印统计信息
+        # Print statistics
         total_selected = sum(len(experts) for experts in data.values())
         total_layers = len(data)
         avg_per_layer = total_selected / total_layers if total_layers > 0 else 0
-        logger.info(f"共 {total_layers} 层，选中 {total_selected} 个专家 (平均每层 {avg_per_layer:.1f} 个)")
+        logger.info(f"Total {total_layers} layers, selected {total_selected} experts (average {avg_per_layer:.1f} per layer)")
 
         return data
 
     def load_model(self):
-        """加载模型和 tokenizer"""
-        logger.info(f"加载模型: {self.model_path}")
-        logger.info(f"设备映射策略: {self.device_map}")
+        """Load model and tokenizer"""
+        logger.info(f"Loading model: {self.model_path}")
+        logger.info(f"Device mapping strategy: {self.device_map}")
 
-        # 加载 tokenizer
+        # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_path, trust_remote_code=True
         )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # 加载模型
+        # Load model
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             torch_dtype="auto",
@@ -160,37 +160,37 @@ class ModelPruner:
             trust_remote_code=True,
         )
         
-        # 显示设备分配情况
+        # Display device allocation
         if hasattr(self.model, 'hf_device_map'):
             devices_used = set(str(v) for v in self.model.hf_device_map.values())
-            logger.info(f"模型分布在设备: {devices_used}")
+            logger.info(f"Model distributed across devices: {devices_used}")
         
-        logger.info("模型加载成功")
+        logger.info("Model loaded successfully")
 
     def _find_gate_module(self, moe_module) -> Optional[torch.nn.Module]:
-        """查找 MoE 模块中的 Gate/Router 模块"""
-        # 常见的 gate 属性名
+        """Find the Gate/Router module in a MoE module"""
+        # Common gate attribute names
         gate_names = ["gate", "router", "gate_proj", "wg"]
         
         for name in gate_names:
             if hasattr(moe_module, name):
                 gate = getattr(moe_module, name)
-                # 确保是一个有参数的模块
+                # Ensure it is a module with parameters
                 if isinstance(gate, torch.nn.Module):
                     return gate
         
         return None
 
     def _get_num_experts(self, moe_module) -> Optional[int]:
-        """获取 MoE 模块中的专家数量"""
-        # 尝试从各种属性获取
+        """Get the number of experts in a MoE module"""
+        # Try to get from various attributes
         attr_names = ["num_experts", "n_routed_experts", "num_local_experts"]
         
         for attr in attr_names:
             if hasattr(moe_module, attr):
                 return getattr(moe_module, attr)
         
-        # 尝试从 experts 模块获取
+        # Try to get from experts module
         experts = None
         if hasattr(moe_module, "experts"):
             experts = moe_module.experts
@@ -210,36 +210,36 @@ class ModelPruner:
                           selected_indices: Set[int],
                           layer_idx: int) -> bool:
         """
-        修改 Gate 模块，使被剪掉的专家不被选中
+        Modify Gate module so pruned experts won't be selected
         
-        策略优先级：
-        1. 如果 Gate 已有 bias，修改 bias
-        2. 如果 Gate 是 Linear 且无 bias，尝试添加 bias
-        3. 将被剪掉专家的 weight 行置零（作为备选）
+        Strategy priority:
+        1. If Gate already has bias, modify bias
+        2. If Gate is Linear without bias, try to add bias
+        3. Zero out pruned experts' weight rows (as fallback)
         """
         unselected_indices = [i for i in range(num_experts) if i not in selected_indices]
         
         if not unselected_indices:
-            logger.info(f"Layer {layer_idx}: 所有专家都被选中，无需修改 gate")
+            logger.info(f"Layer {layer_idx}: All experts selected, no gate modification needed")
             return True
         
         modified = False
         method_used = ""
         
-        # 方法 1: 修改 Linear 层
+        # Method 1: Modify Linear layer
         if isinstance(gate_module, torch.nn.Linear):
             with torch.no_grad():
-                # 1a. 如果已有 bias，直接修改
+                # 1a. If bias already exists, modify it directly
                 if gate_module.bias is not None:
                     for idx in unselected_indices:
                         if idx < gate_module.bias.size(0):
                             gate_module.bias.data[idx] = GATE_BIAS_VALUE
                     modified = True
-                    method_used = "修改已有 bias"
+                    method_used = "modified existing bias"
                 else:
-                    # 1b. 没有 bias，尝试添加一个
-                    # 注意：这需要模型的 forward 函数支持 bias
-                    # 大多数 nn.Linear 的 forward 会自动使用 bias（如果存在）
+                    # 1b. No bias, try to add one
+                    # Note: This requires the model's forward function to support bias
+                    # Most nn.Linear forward functions will automatically use bias (if it exists)
                     try:
                         new_bias = torch.zeros(
                             gate_module.out_features, 
@@ -249,44 +249,44 @@ class ModelPruner:
                         for idx in unselected_indices:
                             new_bias[idx] = GATE_BIAS_VALUE
                         
-                        # 注册为新的 bias 参数
+                        # Register as new bias parameter
                         gate_module.register_parameter('bias', torch.nn.Parameter(new_bias))
                         modified = True
-                        method_used = "添加新 bias"
-                        logger.info(f"Layer {layer_idx}: Gate 原本无 bias，已添加")
+                        method_used = "added new bias"
+                        logger.info(f"Layer {layer_idx}: Gate originally had no bias, added one")
                     except Exception as e:
-                        logger.warning(f"Layer {layer_idx}: 添加 bias 失败: {e}")
+                        logger.warning(f"Layer {layer_idx}: Failed to add bias: {e}")
                         
-                        # 1c. 如果添加 bias 失败，将被剪掉专家的 weight 行置零
-                        # 这会使这些专家的 gate 分数接近 0（取决于输入）
+                        # 1c. If adding bias failed, zero out pruned experts' weight rows
+                        # This makes these experts' gate scores close to 0 (depends on input)
                         weight = gate_module.weight
                         if weight.dim() == 2 and weight.size(0) == num_experts:
                             for idx in unselected_indices:
                                 weight.data[idx] = 0.0
                             modified = True
-                            method_used = "weight 置零"
+                            method_used = "weight zeroed out"
         
-        # 方法 2: 对于非 Linear 的 gate 模块
+        # Method 2: For non-Linear gate modules
         elif hasattr(gate_module, "weight") and isinstance(gate_module.weight, torch.nn.Parameter):
             with torch.no_grad():
                 weight = gate_module.weight
-                # 假设 weight 的形状是 [num_experts, hidden_size]
+                # Assume weight shape is [num_experts, hidden_size]
                 if weight.dim() == 2 and weight.size(0) == num_experts:
                     for idx in unselected_indices:
                         weight.data[idx] = 0.0
                     modified = True
-                    method_used = "weight 置零 (非 Linear)"
+                    method_used = "weight zeroed out (non-Linear)"
         
         if modified:
-            logger.info(f"Layer {layer_idx}: 屏蔽 {len(unselected_indices)} 个专家 ({method_used})")
+            logger.info(f"Layer {layer_idx}: Masked {len(unselected_indices)} experts ({method_used})")
         else:
-            logger.warning(f"Layer {layer_idx}: 无法修改 gate 模块 (类型: {type(gate_module).__name__})")
+            logger.warning(f"Layer {layer_idx}: Unable to modify gate module (type: {type(gate_module).__name__})")
         
         return modified
 
     def modify_gates(self):
-        """修改所有 MoE 层的 gate，使被剪掉的专家不被选中"""
-        logger.info("开始修改 Gate/Router 模块...")
+        """Modify gates in all MoE layers so pruned experts won't be selected"""
+        logger.info("Starting to modify Gate/Router modules...")
         
         modified_layers = 0
         
@@ -296,7 +296,7 @@ class ModelPruner:
             if layer_idx is None or str(layer_idx) not in self.selected_experts:
                 continue
             
-            # 检查是否是 MoE 模块
+            # Check if it is a MoE module
             is_moe = (hasattr(module, "experts") or 
                      hasattr(module, "routed_experts") or
                      hasattr(module, "gate"))
@@ -304,30 +304,30 @@ class ModelPruner:
             if not is_moe:
                 continue
             
-            # 获取 gate 模块
+            # Get gate module
             gate_module = self._find_gate_module(module)
             if gate_module is None:
                 continue
             
-            # 获取专家数量
+            # Get number of experts
             num_experts = self._get_num_experts(module)
             if num_experts is None:
-                logger.warning(f"Layer {layer_idx}: 无法确定专家数量")
+                logger.warning(f"Layer {layer_idx}: Unable to determine number of experts")
                 continue
             
-            # 获取选中的专家
+            # Get selected experts
             selected_indices = set(self.selected_experts[str(layer_idx)])
             
-            # 修改 gate
+            # Modify gate
             if self._modify_gate_bias(gate_module, num_experts, selected_indices, layer_idx):
                 modified_layers += 1
         
         self.stats["gate_modified_layers"] = modified_layers
-        logger.info(f"Gate 修改完成! 共修改 {modified_layers} 层")
+        logger.info(f"Gate modification done! Modified {modified_layers} layers")
 
     def zero_out_experts(self):
-        """将未选中的专家权重置零"""
-        logger.info("开始将未选中的专家权重置零...")
+        """Zero out weights of unselected experts"""
+        logger.info("Starting to zero out unselected expert weights...")
 
         total_zeroed_experts = 0
         total_zeroed_params = 0
@@ -338,7 +338,7 @@ class ModelPruner:
             if layer_idx is None or str(layer_idx) not in self.selected_experts:
                 continue
 
-            # 查找 experts 模块（支持多种模型架构）
+            # Find experts module (supports multiple model architectures)
             experts = None
             if hasattr(module, "experts"):
                 experts = module.experts
@@ -350,7 +350,7 @@ class ModelPruner:
 
             selected_indices = set(self.selected_experts[str(layer_idx)])
 
-            # 检查是否是打包权重类型（如 GptOssExperts）
+            # Check if it is a packed weight type (e.g., GptOssExperts)
             if hasattr(experts, "num_experts"):
                 num_experts = experts.num_experts
                 unselected_indices = [
@@ -360,12 +360,12 @@ class ModelPruner:
                 if not unselected_indices:
                     continue
 
-                # 置零专家权重参数
+                # Zero out expert weight parameters
                 expert_params = [
                     "gate_up_proj", "down_proj",
                     "gate_up_proj_bias", "down_proj_bias",
-                    "gate_proj", "up_proj",  # 某些模型使用这些名称
-                    "w1", "w2", "w3",  # Llama 风格
+                    "gate_proj", "up_proj",  # Some models use these names
+                    "w1", "w2", "w3",  # Llama style
                 ]
 
                 zeroed_params = 0
@@ -381,11 +381,11 @@ class ModelPruner:
                     total_zeroed_experts += len(unselected_indices)
                     total_zeroed_params += zeroed_params
                     logger.info(
-                        f"Layer {layer_idx}: 置零 {len(unselected_indices)} 个专家, "
-                        f"处理 {zeroed_params} 个参数"
+                        f"Layer {layer_idx}: Zeroed out {len(unselected_indices)} experts, "
+                        f"processed {zeroed_params} parameters"
                     )
 
-            # 检查是否是 ModuleList 类型
+            # Check if it is a ModuleList type
             elif isinstance(experts, torch.nn.ModuleList):
                 num_experts = len(experts)
                 unselected_indices = [
@@ -410,18 +410,18 @@ class ModelPruner:
 
                 if zeroed_experts_in_layer > 0:
                     logger.info(
-                        f"Layer {layer_idx}: 置零 {zeroed_experts_in_layer} 个专家, "
-                        f"处理 {zeroed_params_in_layer} 个参数"
+                        f"Layer {layer_idx}: Zeroed out {zeroed_experts_in_layer} experts, "
+                        f"processed {zeroed_params_in_layer} parameters"
                     )
                     total_zeroed_experts += zeroed_experts_in_layer
                     total_zeroed_params += zeroed_params_in_layer
 
         self.stats["zeroed_experts"] = total_zeroed_experts
         self.stats["zeroed_params"] = total_zeroed_params
-        logger.info(f"权重置零完成! 共置零 {total_zeroed_experts} 个专家")
+        logger.info(f"Weight zeroing done! Zeroed out {total_zeroed_experts} experts")
 
     def _extract_layer_index(self, module_name: str) -> Optional[int]:
-        """从模块名称中提取层索引"""
+        """Extract layer index from module name"""
         parts = module_name.split(".")
 
         if "layers" in parts:
@@ -443,27 +443,27 @@ class ModelPruner:
         return None
 
     def save_model(self):
-        """保存剪枝后的模型为 safetensor 格式"""
+        """Save the pruned model in safetensor format"""
         if self.model is None:
-            raise ValueError("模型未加载，请先调用 load_model()")
+            raise ValueError("Model not loaded, please call load_model() first")
 
-        logger.info(f"保存剪枝后的模型到: {self.output_dir}")
+        logger.info(f"Saving pruned model to: {self.output_dir}")
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # 保存模型
+        # Save model
         self.model.save_pretrained(
             self.output_dir,
             safe_serialization=True,
             max_shard_size="5GB",
         )
-        logger.info("模型权重已保存 (safetensor 格式)")
+        logger.info("Model weights saved (safetensor format)")
 
-        # 保存 tokenizer
+        # Save tokenizer
         self.tokenizer.save_pretrained(self.output_dir)
-        logger.info("Tokenizer 已保存")
+        logger.info("Tokenizer saved")
 
-        # 保存剪枝信息
+        # Save pruning info
         pruning_info = {
             "original_model": self.model_path,
             "selection_file": self.selection_json_path,
@@ -480,15 +480,15 @@ class ModelPruner:
         info_path = os.path.join(self.output_dir, "pruning_info.json")
         with open(info_path, "w") as f:
             json.dump(pruning_info, f, indent=2)
-        logger.info(f"剪枝信息已保存到: {info_path}")
+        logger.info(f"Pruning info saved to: {info_path}")
 
     def run(self):
-        """执行完整的剪枝流程"""
+        """Execute the complete pruning workflow"""
         logger.info("=" * 70)
-        logger.info("开始 MoE 模型专家剪枝")
+        logger.info("Starting MoE Model Expert Pruning")
         logger.info("=" * 70)
         
-        # 0. 检测剪枝方法并确定策略
+        # 0. Detect pruning method and determine strategy
         self.detected_method = detect_method_from_filename(self.selection_json_path)
         self.pruning_strategy = get_strategy_for_method(
             self.detected_method, 
@@ -496,92 +496,92 @@ class ModelPruner:
         )
         
         if self.detected_method:
-            logger.info(f"检测到剪枝方法: {self.detected_method}")
+            logger.info(f"Detected pruning method: {self.detected_method}")
         if self.user_pruning_strategy == "auto":
-            logger.info(f"自动选择策略: {self.pruning_strategy}")
+            logger.info(f"Auto-selected strategy: {self.pruning_strategy}")
         else:
-            logger.info(f"使用指定策略: {self.pruning_strategy}")
+            logger.info(f"Using specified strategy: {self.pruning_strategy}")
 
-        # 1. 加载专家选择
+        # 1. Load expert selection
         self.selected_experts = self.load_selection_file()
 
-        # 2. 加载模型
+        # 2. Load model
         self.load_model()
 
-        # 3. 根据策略执行剪枝
+        # 3. Execute pruning based on strategy
         if self.pruning_strategy in ["gate_bias", "both"]:
             self.modify_gates()
         
         if self.pruning_strategy in ["zero_weights", "both"]:
             self.zero_out_experts()
 
-        # 4. 保存模型
+        # 4. Save model
         self.save_model()
 
         logger.info("=" * 70)
-        logger.info("剪枝完成!")
+        logger.info("Pruning completed!")
         logger.info("=" * 70)
-        logger.info(f"剪枝后的模型已保存到: {self.output_dir}")
+        logger.info(f"Pruned model saved to: {self.output_dir}")
         
         if self.pruning_strategy == "zero_weights":
-            logger.info("✓ 使用 zero_weights 策略：专家权重已置零")
+            logger.info("✓ Used zero_weights strategy: expert weights have been zeroed out")
         elif self.pruning_strategy == "gate_bias":
-            logger.info("✓ 使用 gate_bias 策略：被剪掉的专家将不会被 router 选中")
+            logger.info("✓ Used gate_bias strategy: pruned experts will not be selected by router")
         else:
-            logger.info("✓ 使用 both 策略：gate 已修改且权重已置零")
+            logger.info("✓ Used both strategy: gate modified and weights zeroed out")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="MoE 模型专家剪枝工具 - 支持多种剪枝策略"
+        description="MoE Model Expert Pruning Tool - Supports multiple pruning strategies"
     )
     parser.add_argument(
         "--model_path",
         type=str,
         required=True,
-        help="原始模型路径",
+        help="Original model path",
     )
     parser.add_argument(
         "--selection_file",
         type=str,
         required=True,
-        help="专家选择 JSON 文件路径",
+        help="Expert selection JSON file path",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         required=True,
-        help="输出模型保存目录",
+        help="Output model save directory",
     )
     parser.add_argument(
         "--device_map",
         type=str,
         default="auto",
-        help="设备映射策略: auto, balanced, cuda:0, cpu",
+        help="Device mapping strategy: auto, balanced, cuda:0, cpu",
     )
     parser.add_argument(
         "--strategy",
         type=str,
         default="auto",
         choices=["auto", "zero_weights", "gate_bias", "both"],
-        help="剪枝策略: auto(根据方法自动选择), zero_weights, gate_bias, both",
+        help="Pruning strategy: auto (auto-select based on method), zero_weights, gate_bias, both",
     )
-    # 兼容旧参数
-    parser.add_argument("--device", type=str, default=None, help="(已废弃)")
+    # Backward compatible parameter
+    parser.add_argument("--device", type=str, default=None, help="(deprecated)")
 
     args = parser.parse_args()
     
     device_map = args.device_map
     if args.device is not None:
-        logger.warning("--device 参数已废弃，请使用 --device_map")
+        logger.warning("--device parameter is deprecated, please use --device_map")
         device_map = args.device
 
     if not os.path.exists(args.model_path):
-        logger.error(f"模型路径不存在: {args.model_path}")
+        logger.error(f"Model path does not exist: {args.model_path}")
         return
 
     if not os.path.exists(args.selection_file):
-        logger.error(f"专家选择文件不存在: {args.selection_file}")
+        logger.error(f"Expert selection file does not exist: {args.selection_file}")
         return
 
     pruner = ModelPruner(

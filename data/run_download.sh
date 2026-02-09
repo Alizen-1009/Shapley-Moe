@@ -1,17 +1,17 @@
 #!/bin/bash
 # =============================================================================
-# 通用数据集下载脚本
+# Universal Dataset Download Script
 # =============================================================================
 #
-# 功能：
-#   下载数据集，可从配置文件读取数据集列表
+# Features:
+#   Download datasets, can read dataset list from config file
 #
-# 用法：
-#   ./run_download.sh [数据集名称] [样本数量] [选项]
+# Usage:
+#   ./run_download.sh [dataset_name] [num_samples] [options]
 #
 # =============================================================================
 
-# 设置使用国内镜像（如果需要）
+# Set up mirror (if needed)
 export HF_ENDPOINT=https://hf-mirror.com
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,17 +20,17 @@ CONFIG_FILE="${PROJECT_DIR}/configs/experiments.yaml"
 
 cd "$SCRIPT_DIR"
 
-# 激活 conda 环境
+# Activate conda environment
 if [ -z "$CONDA_DEFAULT_ENV" ]; then
     source /home/ubuntu/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
     conda activate lm-evaluation 2>/dev/null || conda activate lighteval 2>/dev/null || true
 fi
 
 # =============================================================================
-# 从配置文件读取函数
+# Functions for reading from config file
 # =============================================================================
 
-# 读取配置中的数据集列表
+# Read dataset list from config
 read_datasets_from_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo ""
@@ -44,7 +44,7 @@ try:
         config = yaml.safe_load(f)
     datasets = config.get('datasets', [])
     for ds in datasets:
-        # 去掉 _25 后缀获取数据集名称
+        # Remove suffix to get dataset name
         name = ds.rsplit('_', 1)[0] if '_' in ds else ds
         print(name)
 except:
@@ -53,42 +53,42 @@ except:
 }
 
 # =============================================================================
-# 帮助信息
+# Help information
 # =============================================================================
 
 show_help() {
     echo "============================================================================="
-    echo "通用数据集下载工具"
+    echo "Universal Dataset Download Tool"
     echo "============================================================================="
     echo ""
-    echo "用法:"
-    echo "  $0 [数据集名称] [样本数量] [选项]"
+    echo "Usage:"
+    echo "  $0 [dataset_name] [num_samples] [options]"
     echo ""
-    echo "参数:"
-    echo "  数据集名称    数据集名称（默认: gsm8k）"
-    echo "  样本数量      要提取的样本数（默认: 25）"
+    echo "Parameters:"
+    echo "  dataset_name    Dataset name (default: gsm8k)"
+    echo "  num_samples     Number of samples to extract (default: 25)"
     echo ""
-    echo "选项:"
-    echo "  --with-answers    包含答案（用于 few-shot）"
-    echo "  --all             下载配置文件中的所有数据集"
-    echo "  --list            列出所有可用数据集"
-    echo "  --list-config     列出配置文件中的数据集"
-    echo "  --help            显示此帮助信息"
+    echo "Options:"
+    echo "  --with-answers    Include answers (for few-shot)"
+    echo "  --all             Download all datasets from config file"
+    echo "  --list            List all available datasets"
+    echo "  --list-config     List datasets from config file"
+    echo "  --help            Show this help info"
     echo ""
-    echo "配置文件: $CONFIG_FILE"
+    echo "Config file: $CONFIG_FILE"
     echo ""
-    echo "示例:"
-    echo "  $0                              # 下载 gsm8k 25 条"
-    echo "  $0 gsm8k 50                     # 下载 gsm8k 50 条"
-    echo "  $0 hellaswag 100                # 下载 hellaswag 100 条"
-    echo "  $0 gsm8k 30 --with-answers      # 下载 gsm8k 30 条（含答案）"
-    echo "  $0 --all                        # 下载配置中的所有数据集"
-    echo "  $0 --list                       # 列出可用数据集"
+    echo "Examples:"
+    echo "  $0                              # Download gsm8k 25 entries"
+    echo "  $0 gsm8k 50                     # Download gsm8k 50 entries"
+    echo "  $0 hellaswag 100                # Download hellaswag 100 entries"
+    echo "  $0 gsm8k 30 --with-answers      # Download gsm8k 30 entries (with answers)"
+    echo "  $0 --all                        # Download all datasets from config"
+    echo "  $0 --list                       # List available datasets"
     echo ""
 }
 
 # =============================================================================
-# 解析参数
+# Parse arguments
 # =============================================================================
 
 DATASET=""
@@ -107,7 +107,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --list-config)
-            echo "配置文件中的数据集:"
+            echo "Datasets from config file:"
             read_datasets_from_config | while read ds; do
                 echo "  - $ds"
             done
@@ -126,7 +126,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -*)
-            echo "未知选项: $1"
+            echo "Unknown option: $1"
             show_help
             exit 1
             ;;
@@ -138,17 +138,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # =============================================================================
-# 下载逻辑
+# Download logic
 # =============================================================================
 
 if [ "$DOWNLOAD_ALL" = true ]; then
-    # 下载配置中的所有数据集
+    # Download all datasets from config
     echo "============================================================================="
-    echo "批量下载配置中的所有数据集"
+    echo "Batch download all datasets from config"
     echo "============================================================================="
-    echo "样本数量: $NUM_SAMPLES"
+    echo "Number of samples: $NUM_SAMPLES"
     if [ -n "$WITH_ANSWERS" ]; then
-        echo "包含答案: 是"
+        echo "Include answers: yes"
     fi
     echo "============================================================================="
     echo ""
@@ -156,7 +156,7 @@ if [ "$DOWNLOAD_ALL" = true ]; then
     CONFIG_DATASETS=$(read_datasets_from_config)
     
     if [ -z "$CONFIG_DATASETS" ]; then
-        echo "错误: 配置文件中未找到数据集列表"
+        echo "Error: No dataset list found in config file"
         exit 1
     fi
     
@@ -168,7 +168,7 @@ if [ "$DOWNLOAD_ALL" = true ]; then
         total=$((total + 1))
         echo ""
         echo "----------------------------------------"
-        echo "下载: $ds ($NUM_SAMPLES 条)"
+        echo "Downloading: $ds ($NUM_SAMPLES entries)"
         echo "----------------------------------------"
         
         if python3 download_dataset.py \
@@ -176,36 +176,36 @@ if [ "$DOWNLOAD_ALL" = true ]; then
             --num_samples "$NUM_SAMPLES" \
             $WITH_ANSWERS; then
             success=$((success + 1))
-            echo "✓ $ds 下载完成"
+            echo "✓ $ds download complete"
         else
             failed=$((failed + 1))
-            echo "✗ $ds 下载失败"
+            echo "✗ $ds download failed"
         fi
     done
     
     echo ""
     echo "============================================================================="
-    echo "批量下载完成"
+    echo "Batch download complete"
     echo "============================================================================="
-    echo "总计: $total, 成功: $success, 失败: $failed"
+    echo "Total: $total, Success: $success, Failed: $failed"
     echo "============================================================================="
     
 else
-    # 下载单个数据集
+    # Download single dataset
     if [ -z "$DATASET" ]; then
         DATASET="gsm8k"
     fi
     
     echo "============================================================================="
-echo "下载数据集: $DATASET"
-echo "样本数量: $NUM_SAMPLES"
+echo "Downloading dataset: $DATASET"
+echo "Number of samples: $NUM_SAMPLES"
 if [ -n "$WITH_ANSWERS" ]; then
-    echo "包含答案: 是"
+    echo "Include answers: yes"
 fi
     echo "============================================================================="
 echo ""
 
-# 运行下载
+# Run download
 python3 download_dataset.py \
     --dataset "$DATASET" \
     --num_samples "$NUM_SAMPLES" \
@@ -213,6 +213,6 @@ python3 download_dataset.py \
 
 echo ""
     echo "============================================================================="
-echo "✓ 完成！"
+echo "✓ Done!"
     echo "============================================================================="
 fi
