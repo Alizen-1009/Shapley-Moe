@@ -1,68 +1,68 @@
 # =============================================================================
-# 实验配置
+# Experiment Configuration
 # =============================================================================
 
-# 数据集配置
+# Dataset configuration
 datasets:
-  # 代码任务
+  # Code tasks
   - humaneval_25
   
-  # 数学任务
+  # Math tasks
   - gsm8k_25
   - math_500_25
   
-  # 推理任务
+  # Reasoning tasks
   - arc_easy_25
   - logiqa_25
   - gpqa_diamond_25
   
-  # 医学任务
+  # Medical tasks
   - med_mcqa_25
   - pubmedqa_25
   - biomix_qa_25
   
-  # NLP 任务
+  # NLP tasks
   - ontonotes5_25
   - truthful_qa_25
 
-# 剪枝方法
+# Pruning methods
 pruning_methods:
-  - shapley      # Shapley 值剪枝（主方法）
-  - easyep       # EASYEP 剪枝
-  - reap         # REAP 剪枝
-  - gating       # Gating Score 剪枝
-  - frequency    # 激活频率剪枝（基线）
-  - random       # 随机剪枝（基线）
+  - shapley      # Shapley value pruning (primary method)
+  - easyep       # EASYEP pruning
+  - reap         # REAP pruning
+  - gating       # Gating Score pruning
+  - frequency    # Activation frequency pruning (baseline)
+  - random       # Random pruning (baseline)
 
-# 剪枝率（保留比例）
+# Pruning rates (retention ratio)
 pruning_rates:
-  - 0.80   # 保留 80%
-  - 0.60   # 保留 60%
+  - 0.80   # Retain 80%
+  - 0.60   # Retain 60%
 
-# Shapley 剪枝策略
+# Shapley pruning strategies
 shapley_strategies:
-  - alpha_per_layer   # 每层 Alpha 覆盖（推荐）
-  - alpha_global      # 全局 Alpha 覆盖
-  - topk_per_layer    # 每层 Top-K
-  - topk_global       # 全局 Top-K
+  - alpha_per_layer   # Per-layer Alpha coverage (recommended)
+  - alpha_global      # Global Alpha coverage
+  - topk_per_layer    # Per-layer Top-K
+  - topk_global       # Global Top-K
 
-# 默认配置
+# Default configuration
 defaults:
-  # 剪枝相关
+  # Pruning related
   pruning_rate: 0.5
   pruning_method: shapley
   shapley_strategy: alpha_per_layer
   
-  # 推理相关
+  # Inference related
   max_new_tokens: 64
   device: auto
 
-  # 评测相关
+  # Evaluation related
   eval_batch_size: 128
   eval_timeout: 60000
   eval_port: 8801
 
-# 评测数据集（evalscope 使用的名称）
+# Evaluation datasets (names used by evalscope)
 eval_datasets:
   - humaneval
   - gsm8k

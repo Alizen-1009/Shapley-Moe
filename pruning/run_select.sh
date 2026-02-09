@@ -1,14 +1,14 @@
 #!/bin/bash
 # =============================================================================
-# 统一的专家选择脚本
+# Unified Expert Selection Script
 # =============================================================================
 #
-# 功能：
-#   根据指定的方法、模型、数据集和剪枝率进行专家选择
-#   优先从 configs/experiments.yaml 读取配置
+# Features:
+#   Perform expert selection based on specified method, model, dataset, and pruning rate
+#   Reads configuration preferentially from configs/experiments.yaml
 #
-# 用法：
-#   ./run_select.sh [选项]
+# Usage:
+#   ./run_select.sh [options]
 #
 # =============================================================================
 
@@ -20,10 +20,10 @@ CONFIG_FILE="${PROJECT_DIR}/configs/experiments.yaml"
 MODELS_CONFIG="${PROJECT_DIR}/configs/models.yaml"
 
 # =============================================================================
-# 从配置文件读取默认值
+# Read default values from config file
 # =============================================================================
 
-# 通用配置读取函数
+# General config reading function
 read_config() {
     local key="$1"
     local default="$2"
@@ -38,7 +38,7 @@ import yaml
 try:
     with open('$CONFIG_FILE', 'r') as f:
         config = yaml.safe_load(f)
-    # 支持嵌套键，如 'defaults.pruning_rate'
+    # Support nested keys, e.g. 'defaults.pruning_rate'
     keys = '$key'.split('.')
     result = config
     for k in keys:
@@ -61,7 +61,7 @@ except Exception as e:
     fi
 }
 
-# 读取列表配置
+# Read list config
 read_config_list() {
     local key="$1"
     
@@ -88,12 +88,12 @@ except:
 " 2>/dev/null
 }
 
-# 从配置文件读取默认值
+# Read default values from config file
 DEFAULT_RATE=$(read_config "defaults.pruning_rate" "0.5")
 DEFAULT_METHOD=$(read_config "defaults.pruning_method" "shapley")
 DEFAULT_STRATEGY=$(read_config "defaults.shapley_strategy" "alpha_per_layer")
 
-# 默认参数
+# Default parameters
 MODEL=""
 DATASET=""
 METHOD="$DEFAULT_METHOD"
@@ -101,7 +101,7 @@ RATE="$DEFAULT_RATE"
 STRATEGY="$DEFAULT_STRATEGY"
 OUTPUT_DIR=""
 
-# 颜色输出
+# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -115,38 +115,38 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 show_help() {
     echo "============================================================================="
-    echo "统一的专家选择脚本"
+    echo "Unified Expert Selection Script"
     echo "============================================================================="
     echo ""
-    echo "用法: $0 [选项]"
+    echo "Usage: $0 [options]"
     echo ""
-    echo "选项:"
-    echo "  -m, --model MODEL       模型名称 (如 qwen3-30b-a3b, gpt-oss-20b)"
-    echo "  -d, --dataset DATASET   数据集名称 (如 gsm8k_25, arc_easy_25)"
-    echo "  -M, --method METHOD     剪枝方法 (默认: $DEFAULT_METHOD)"
-    echo "                          可选: shapley|easyep|reap|gating|frequency|random"
-    echo "  -r, --rate RATE         保留率 (默认: $DEFAULT_RATE)"
-    echo "  -s, --strategy STRATEGY Shapley 策略 (默认: $DEFAULT_STRATEGY)"
-    echo "                          alpha_per_layer - 每层 Alpha 覆盖（推荐）"
-    echo "                          alpha_global    - 全局 Alpha 覆盖"
-    echo "                          topk_per_layer  - 每层 Top-K"
-    echo "                          topk_global     - 全局 Top-K"
-    echo "  -o, --output DIR        输出目录 (默认: results/{model}/selected_experts/)"
-    echo "  --all-datasets          处理所有数据集"
-    echo "  --all-rates             使用配置文件中的所有剪枝率"
-    echo "  --all-methods           使用配置文件中的所有剪枝方法"
-    echo "  -h, --help              显示帮助"
+    echo "Options:"
+    echo "  -m, --model MODEL       Model name (e.g. qwen3-30b-a3b, gpt-oss-20b)"
+    echo "  -d, --dataset DATASET   Dataset name (e.g. gsm8k_25, arc_easy_25)"
+    echo "  -M, --method METHOD     Pruning method (default: $DEFAULT_METHOD)"
+    echo "                          Options: shapley|easyep|reap|gating|frequency|random"
+    echo "  -r, --rate RATE         Retention rate (default: $DEFAULT_RATE)"
+    echo "  -s, --strategy STRATEGY Shapley strategy (default: $DEFAULT_STRATEGY)"
+    echo "                          alpha_per_layer - Per-layer Alpha coverage (recommended)"
+    echo "                          alpha_global    - Global Alpha coverage"
+    echo "                          topk_per_layer  - Per-layer Top-K"
+    echo "                          topk_global     - Global Top-K"
+    echo "  -o, --output DIR        Output directory (default: results/{model}/selected_experts/)"
+    echo "  --all-datasets          Process all datasets"
+    echo "  --all-rates             Use all pruning rates from config file"
+    echo "  --all-methods           Use all pruning methods from config file"
+    echo "  -h, --help              Show help"
     echo ""
-    echo "配置文件: $CONFIG_FILE"
+    echo "Config file: $CONFIG_FILE"
     echo ""
-    echo "示例:"
+    echo "Examples:"
     echo "  $0 -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.5"
     echo "  $0 -m gpt-oss-20b --all-datasets -M easyep --all-rates"
     echo "  $0 -m deepseekv2-lite-coder -d arc_easy_25 --all-methods -r 0.5"
     echo ""
 }
 
-# 解析参数
+# Parse arguments
 ALL_DATASETS=false
 ALL_RATES=false
 ALL_METHODS=false
@@ -163,77 +163,77 @@ while [[ $# -gt 0 ]]; do
         --all-rates) ALL_RATES=true; shift ;;
         --all-methods) ALL_METHODS=true; shift ;;
         -h|--help) show_help; exit 0 ;;
-        *) log_error "未知选项: $1"; show_help; exit 1 ;;
+        *) log_error "Unknown option: $1"; show_help; exit 1 ;;
     esac
 done
 
-# 验证参数
+# Validate parameters
 if [ -z "$MODEL" ]; then
-    log_error "必须指定模型名称 (-m MODEL)"
+    log_error "Must specify model name (-m MODEL)"
     show_help
     exit 1
 fi
 
-# 设置默认输出目录
+# Set default output directory
 if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="${PROJECT_DIR}/results/${MODEL}/selected_experts"
 fi
 mkdir -p "$OUTPUT_DIR"
 
-# 获取数据集列表
+# Get dataset list
 if [ "$ALL_DATASETS" = true ]; then
-    # 从 activations 目录获取数据集列表（新格式：{dataset}_shapley.json）
+    # Get dataset list from activations directory (new format: {dataset}_shapley.json)
     DATASETS=($(ls ${PROJECT_DIR}/results/${MODEL}/activations/*_shapley.json 2>/dev/null | xargs -n1 basename | sed 's/_shapley.json//' || echo ""))
     if [ ${#DATASETS[@]} -eq 0 ]; then
-        log_error "未找到模型 ${MODEL} 的激活数据"
+        log_error "No activation data found for model ${MODEL}"
         exit 1
     fi
 else
     if [ -z "$DATASET" ]; then
-        log_error "必须指定数据集 (-d DATASET) 或使用 --all-datasets"
+        log_error "Must specify dataset (-d DATASET) or use --all-datasets"
         exit 1
     fi
     DATASETS=("$DATASET")
 fi
 
-# 获取剪枝率列表（从配置文件）
+# Get pruning rate list (from config file)
 if [ "$ALL_RATES" = true ]; then
     CONFIG_RATES=$(read_config_list "pruning_rates")
     if [ -n "$CONFIG_RATES" ]; then
         RATES=($CONFIG_RATES)
-        log_info "从配置文件读取剪枝率: ${RATES[*]}"
+        log_info "Read pruning rates from config file: ${RATES[*]}"
     else
         RATES=("0.80" "0.60")
-        log_warning "配置文件中未找到剪枝率，使用默认值: ${RATES[*]}"
+        log_warning "No pruning rates found in config file, using defaults: ${RATES[*]}"
     fi
 else
     RATES=("$RATE")
 fi
 
-# 获取方法列表（从配置文件）
+# Get method list (from config file)
 if [ "$ALL_METHODS" = true ]; then
     CONFIG_METHODS=$(read_config_list "pruning_methods")
     if [ -n "$CONFIG_METHODS" ]; then
         METHODS=($CONFIG_METHODS)
-        log_info "从配置文件读取剪枝方法: ${METHODS[*]}"
+        log_info "Read pruning methods from config file: ${METHODS[*]}"
     else
     METHODS=("shapley" "easyep" "reap" "gating" "frequency" "random")
-        log_warning "配置文件中未找到剪枝方法，使用默认值"
+        log_warning "No pruning methods found in config file, using defaults"
     fi
 else
     METHODS=("$METHOD")
 fi
 
-# 执行专家选择
+# Execute expert selection
 log_info "============================================================================="
-log_info "专家选择"
+log_info "Expert Selection"
 log_info "============================================================================="
-log_info "模型: $MODEL"
-log_info "数据集: ${DATASETS[*]}"
-log_info "方法: ${METHODS[*]}"
-log_info "剪枝率: ${RATES[*]}"
-log_info "Shapley 策略: $STRATEGY"
-log_info "输出目录: $OUTPUT_DIR"
+log_info "Model: $MODEL"
+log_info "Datasets: ${DATASETS[*]}"
+log_info "Methods: ${METHODS[*]}"
+log_info "Pruning rates: ${RATES[*]}"
+log_info "Shapley strategy: $STRATEGY"
+log_info "Output directory: $OUTPUT_DIR"
 log_info "============================================================================="
 
 total=0
@@ -245,7 +245,7 @@ for ds in "${DATASETS[@]}"; do
         for rate in "${RATES[@]}"; do
             total=$((total + 1))
             
-            # 确定输入文件（新的目录结构）
+            # Determine input file (new directory structure)
             case $method in
                 shapley)
                     INPUT_FILE="${PROJECT_DIR}/results/${MODEL}/shapley_values/${ds}_shapley.csv"
@@ -273,34 +273,34 @@ for ds in "${DATASETS[@]}"; do
                     ;;
             esac
             
-            # 检查输入文件
+            # Check input file
             if [ ! -f "$INPUT_FILE" ]; then
-                log_error "输入文件不存在: $INPUT_FILE"
+                log_error "Input file does not exist: $INPUT_FILE"
                 failed=$((failed + 1))
                 continue
             fi
             
-            # 生成输出文件名（包含策略信息）
+            # Generate output filename (including strategy info)
             RATE_STR=$(echo "$rate" | sed 's/\./_/g')
-            # Shapley 方法需要区分策略，其他方法使用 per_layer
+            # Shapley method needs to distinguish strategy, others use per_layer
             if [ "$method" = "shapley" ]; then
                 OUTPUT_FILE="${OUTPUT_DIR}/${method}_${STRATEGY}_${ds}_rate${RATE_STR}.json"
             else
                 OUTPUT_FILE="${OUTPUT_DIR}/${method}_${ds}_rate${RATE_STR}.json"
             fi
             
-            log_info "处理: ${method} / ${ds} / rate=${rate}"
+            log_info "Processing: ${method} / ${ds} / rate=${rate}"
             
-            # 运行脚本
+            # Run script
             if python3 "$SCRIPT" \
                 --input "$INPUT_FILE" \
                 --output "$OUTPUT_FILE" \
                 --pruning_rate "$rate" \
-                --strategy "$STRATEGY" 2>&1 | grep -E "^(✓|选择|保留)" ; then
-                log_success "  ✓ 完成: $OUTPUT_FILE"
+                --strategy "$STRATEGY" 2>&1 | grep -E "^(✓|Selection|Retained)" ; then
+                log_success "  ✓ Done: $OUTPUT_FILE"
                 success=$((success + 1))
             else
-                log_error "  ✗ 失败"
+                log_error "  ✗ Failed"
                 failed=$((failed + 1))
             fi
         done
@@ -308,5 +308,5 @@ for ds in "${DATASETS[@]}"; do
 done
 
 log_info "============================================================================="
-log_info "完成！成功: $success / $total, 失败: $failed"
+log_info "Done! Success: $success / $total, Failed: $failed"
 log_info "============================================================================="

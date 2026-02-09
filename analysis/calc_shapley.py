@@ -85,21 +85,22 @@ def calculate_shapley_k(data: Dict[Tuple[int, ...], int]) -> Tuple[Dict[int, flo
     return shapley_values, sub_coalition_frequencies
 
 def process_layer(layer_idx: str, raw_data: Dict[str, int]):
-    print(f"\n正在处理 Layer {layer_idx} ...")
+    print(f"\nProcessing Layer {layer_idx} ...")
     
     parsed_data = parse_data(raw_data)
     if not parsed_data:
-        print(f"Layer {layer_idx} 没有有效数据。")
+        print(f"Layer {layer_idx} has no valid data.")
         return None
         
     shapley_results, _ = calculate_shapley_k(parsed_data)
     
     if not shapley_results:
-        print(f"Layer {layer_idx} 计算结果为空。")
+        print(f"Layer {layer_idx} computation result is empty.")
         return None
 
-    # 如果提供了 num_experts，则把从未激活的专家也补齐（Shapley=0, Activations=0）
-    # 这样下游选择/统计能保证每层专家数固定，不会因为缺失行而“悄悄出错”。
+    # If num_experts is provided, also fill in never-activated experts (Shapley=0, Activations=0)
+    # This ensures downstream selection/statistics have a fixed number of experts per layer,
+    # preventing silent errors due to missing rows.
     if getattr(process_layer, "_num_experts", None) is not None:
         num_experts = int(getattr(process_layer, "_num_experts"))
         for expert_id in range(num_experts):
@@ -133,7 +134,7 @@ def main():
         "--num_experts",
         type=int,
         default=None,
-        help="（可选）每层专家总数。若提供，则会把从未激活的专家也输出到 CSV（Shapley=0, Activations=0）。",
+        help="(Optional) Total number of experts per layer. If provided, never-activated experts will also be output to CSV (Shapley=0, Activations=0).",
     )
     
     args = parser.parse_args()
@@ -154,7 +155,7 @@ def main():
         print("Error: JSON format incorrect. Expected 'layers' key.")
         return
 
-    # 把 num_experts 传递给 process_layer（避免改太多函数签名）
+    # Pass num_experts to process_layer (avoid changing too many function signatures)
     process_layer._num_experts = args.num_experts
 
     all_layers_results = []

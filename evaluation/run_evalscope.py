@@ -2,22 +2,22 @@ from evalscope.constants import EvalType
 from evalscope import TaskConfig, run_task
 
 task_cfg = TaskConfig(
-    model="test_model",  # 模型名称
-    api_url="http://127.0.0.1:8801/v1",  # 模型服务地址
-    eval_type=EvalType.SERVICE,  # 评测类型，这里使用服务评测
-    # datasets=["arc"],  # 评测数据集列表
+    model="test_model",  # model name
+    api_url="http://127.0.0.1:8801/v1",  # model service URL
+    eval_type=EvalType.SERVICE,  # evaluation type, using service evaluation here
+    # datasets=["arc"],  # evaluation dataset list
     datasets=["humaneval", "gsm8k", "aime24", "med_mcqa", "arc",
               "gpqa_diamond", "logi_qa", "truthful_qa", "ontonotes5", "math_500", "biomix_qa", 
               "aime25", "pubmedqa", "live_code_bench"], 
     # generation_config={
-    #     "extra_body": {"reasoning_effort": "high"}  # 模型生成参数，这里设置为高推理水平
+    #     "extra_body": {"reasoning_effort": "high"}  # model generation parameters, set to high reasoning level here
     # },
     generation_config={
-        'max_tokens': 20480,  # 设置最大生成长度
+        'max_tokens': 20480,  # set max generation length
         # 'extra_body':{'chat_template_kwargs': {'enable_thinking': True},} 
     },
-    eval_batch_size=128,  # 并发测试的batch size
-    timeout=60000,  # 超时时间，单位为秒
+    eval_batch_size=128,  # concurrent test batch size
+    timeout=60000,  # timeout in seconds
     
 )
 
