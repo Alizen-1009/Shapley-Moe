@@ -163,12 +163,12 @@ def build_rank_pattern(
     rank_map: Mapping[str, Mapping[str, int]],
     target_modules: Sequence[str],
     alpha_scale: float = 2.0,
-) -> tuple[Dict[str, int], Dict[str, int]]:
+) -> tuple[Dict[str, int], Dict[str, int], List[str]]:
     """
-    Convert expert rank_map to PEFT rank_pattern and alpha_pattern.
+    Convert expert rank_map to PEFT target_modules, rank_pattern and alpha_pattern.
 
-    PEFT applies these patterns by matching module names. We use full module paths
-    for clarity and reproducibility.
+    Only modules expanded from rank_map are passed to PEFT target_modules. This
+    prevents zeroed/pruned experts from receiving LoRA parameters.
     """
     if alpha_scale <= 0:
         raise ValueError(f"alpha_scale must be positive, got {alpha_scale}")
@@ -178,6 +178,7 @@ def build_rank_pattern(
     module_template = get_module_template(model_type)
     rank_pattern: Dict[str, int] = {}
     alpha_pattern: Dict[str, int] = {}
+    target_module_paths: List[str] = []
 
     for layer, expert_ranks in rank_map.items():
         for expert, rank in expert_ranks.items():
@@ -194,11 +195,24 @@ def build_rank_pattern(
                 )
                 rank_pattern[module_name] = rank
                 alpha_pattern[module_name] = alpha
+                target_module_paths.append(module_name)
 
     if not rank_pattern:
         raise ValueError("Generated empty rank_pattern.")
 
-    return rank_pattern, alpha_pattern
+    return rank_pattern, alpha_pattern, target_module_paths
+
+
+def validate_lora_targets_exist(model, target_module_paths: Sequence[str]) -> None:
+    """Fail early if rank_map-expanded LoRA targets do not exist in the loaded model."""
+    available_modules = set(dict(model.named_modules()))
+    missing = [module_name for module_name in target_module_paths if module_name not in available_modules]
+    if missing:
+        preview = ", ".join(missing[:5])
+        raise ValueError(
+            f"{len(missing)} LoRA target modules from rank_map were not found in the model. "
+            f"First missing targets: {preview}"
+        )
 
 
 def parse_csv_list(raw: str) -> List[str]:
@@ -375,14 +389,15 @@ def train(args: argparse.Namespace) -> None:
 
     logger.info("Loading rank_map from %s", args.rank_map)
     rank_map = load_rank_map(args.rank_map)
-    target_modules = parse_csv_list(args.target_modules)
-    rank_pattern, alpha_pattern = build_rank_pattern(
+    target_module_suffixes = parse_csv_list(args.target_modules)
+    rank_pattern, alpha_pattern, lora_target_modules = build_rank_pattern(
         model_type=args.model_type,
         rank_map=rank_map,
-        target_modules=target_modules,
+        target_modules=target_module_suffixes,
         alpha_scale=args.lora_alpha_scale,
     )
     log_rank_pattern_summary(rank_pattern)
+    logger.info("LoRA target modules from rank_map: %d", len(lora_target_modules))
 
     logger.info("Loading model from %s", args.model_path)
     model = AutoModelForCausalLM.from_pretrained(
@@ -392,11 +407,12 @@ def train(args: argparse.Namespace) -> None:
         trust_remote_code=True,
     )
     maybe_enable_gradient_checkpointing(model, args.gradient_checkpointing)
+    validate_lora_targets_exist(model, lora_target_modules)
 
     lora_config = LoraConfig(
         r=args.default_rank,
         lora_alpha=args.default_alpha,
-        target_modules=target_modules,
+        target_modules=lora_target_modules,
         rank_pattern=rank_pattern,
         alpha_pattern=alpha_pattern,
         lora_dropout=args.lora_dropout,
@@ -460,7 +476,9 @@ def train(args: argparse.Namespace) -> None:
         "base_model": args.model_path,
         "rank_map": args.rank_map,
         "model_type": args.model_type,
-        "target_modules": target_modules,
+        "target_module_suffixes": target_module_suffixes,
+        "target_module_count": len(lora_target_modules),
+        "target_scope": "rank_map_modules_only",
         "lora_alpha_scale": args.lora_alpha_scale,
         "default_rank": args.default_rank,
         "default_alpha": args.default_alpha,
@@ -489,7 +507,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target_modules",
         default="gate_proj,up_proj,down_proj",
-        help="Comma-separated module names under each expert.",
+        help="Comma-separated module suffixes under each retained expert.",
     )
     parser.add_argument("--default_rank", type=int, default=16, help="Fallback LoRA rank.")
     parser.add_argument("--default_alpha", type=int, default=32, help="Fallback LoRA alpha.")
