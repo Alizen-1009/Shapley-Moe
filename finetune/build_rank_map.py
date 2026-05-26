@@ -25,8 +25,9 @@ from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequ
 import pandas as pd
 
 
-DEFAULT_RANK_BUCKETS = [16, 8, 4, 2]
-DEFAULT_BUCKET_RATIOS = [0.2, 0.3, 0.3, 0.2]
+DEFAULT_RANK_BUCKETS = [32, 16, 8]
+DEFAULT_BUCKET_RATIOS = [0.2, 0.4, 0.4]
+DEFAULT_UNIFORM_RANK = 16
 
 
 @dataclass(frozen=True)
@@ -198,7 +199,7 @@ def build_rank_map(
     strategy: str = "bucket",
     rank_buckets: Sequence[int] = DEFAULT_RANK_BUCKETS,
     bucket_ratios: Sequence[float] = DEFAULT_BUCKET_RATIOS,
-    uniform_rank: int = 8,
+    uniform_rank: int = DEFAULT_UNIFORM_RANK,
     random_seed: int = 42,
     missing_score: float = 0.0,
 ) -> RankMap:
@@ -347,7 +348,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_BUCKET_RATIOS,
         help="Comma-separated bucket ratios. Must sum to 1.",
     )
-    parser.add_argument("--uniform_rank", type=int, default=8, help="Rank for uniform strategy.")
+    parser.add_argument("--uniform_rank", type=int, default=DEFAULT_UNIFORM_RANK, help="Rank for uniform strategy.")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed for random strategy.")
     parser.add_argument(
         "--missing_score",

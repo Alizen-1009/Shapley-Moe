@@ -491,8 +491,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="gate_proj,up_proj,down_proj",
         help="Comma-separated module names under each expert.",
     )
-    parser.add_argument("--default_rank", type=int, default=8, help="Fallback LoRA rank.")
-    parser.add_argument("--default_alpha", type=int, default=16, help="Fallback LoRA alpha.")
+    parser.add_argument("--default_rank", type=int, default=16, help="Fallback LoRA rank.")
+    parser.add_argument("--default_alpha", type=int, default=32, help="Fallback LoRA alpha.")
     parser.add_argument("--lora_alpha_scale", type=float, default=2.0, help="alpha = rank * scale for rank_map modules.")
     parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout.")
 

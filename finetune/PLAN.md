@@ -130,10 +130,9 @@ C、D、E 三组的可训练参数量应该尽量接近。
 ```text
 每一层内，根据 Shapley 贡献度对保留专家排序：
 
-Top 20% 专家：        rank 16
-20% - 50% 专家：      rank 8
-50% - 80% 专家：      rank 4
-Bottom 20% 专家：     rank 2
+Top 20% 专家：        rank 32
+20% - 60% 专家：      rank 16
+60% - 100% 专家：     rank 8
 ```
 
 也就是说，排序是在每一层内部独立完成的，而不是把所有层的专家混在一起做全局排序。
@@ -141,8 +140,8 @@ Bottom 20% 专家：     rank 2
 后续可以增加消融实验：
 
 ```text
-统一分配：     8 / 8 / 8 / 8
-温和自适应：   16 / 8 / 4 / 2
+统一分配：     16 / 16 / 16
+温和自适应：   32 / 16 / 8
 激进自适应：   32 / 16 / 4 / 1
 随机分配：     使用同样的 rank 集合，但随机分给保留专家
 ```
@@ -255,8 +254,8 @@ finetune/
   "_metadata": {
     "method": "adaptive_lora",
     "rank_strategy": "bucket",
-    "rank_buckets": [16, 8, 4, 2],
-    "bucket_ratios": [0.2, 0.3, 0.3, 0.2]
+    "rank_buckets": [32, 16, 8],
+    "bucket_ratios": [0.2, 0.4, 0.4]
   }
 }
 ```
@@ -382,9 +381,9 @@ evaluation/run_evalscope.py
 ```yaml
 lora:
   rank_strategy: bucket
-  rank_buckets: [16, 8, 4, 2]
-  bucket_ratios: [0.2, 0.3, 0.3, 0.2]
-  uniform_rank: 8
+  rank_buckets: [32, 16, 8]
+  bucket_ratios: [0.2, 0.4, 0.4]
+  uniform_rank: 16
   random_seed: 42
   lora_dropout: 0.05
   lora_alpha_scale: 2
@@ -471,4 +470,3 @@ Shapley CSV
 在相近可训练参数量下，基于专家贡献度的自适应 LoRA
 相比统一 Rank 或随机 Rank 分配，可以恢复更多剪枝造成的性能损失。
 ```
-
