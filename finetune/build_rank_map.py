@@ -296,6 +296,8 @@ def attach_metadata(
     output: MutableMapping[str, object] = dict(rank_map)
     output["_metadata"] = {
         "method": "adaptive_lora_rank_map",
+        "rank_scope": "selected_experts_only",
+        "pruned_experts_omitted": True,
         "strategy": strategy,
         "shapley_csv": shapley_csv,
         "selected_experts": selected_experts,
