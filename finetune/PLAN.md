@@ -241,21 +241,24 @@ finetune/
 ```json
 {
   "0": {
-    "12": 16,
-    "45": 8,
-    "77": 4,
-    "103": 2
+    "12": 32,
+    "45": 16,
+    "77": 16,
+    "103": 8
   },
   "1": {
-    "3": 16,
-    "9": 8,
-    "21": 4
+    "3": 32,
+    "9": 16,
+    "21": 8
   },
   "_metadata": {
-    "method": "adaptive_lora",
-    "rank_strategy": "bucket",
+    "method": "adaptive_lora_rank_map",
+    "rank_scope": "selected_experts_only",
+    "pruned_experts_omitted": true,
+    "strategy": "bucket",
     "rank_buckets": [32, 16, 8],
-    "bucket_ratios": [0.2, 0.4, 0.4]
+    "bucket_ratios": [0.2, 0.4, 0.4],
+    "uniform_rank": 16
   }
 }
 ```
@@ -269,6 +272,13 @@ finetune/
 4. 按 Shapley_Value 从高到低排序。
 5. 根据分桶位置分配 LoRA Rank。
 6. 保存 rank_map JSON。
+```
+
+注意：
+
+```text
+rank_map 只包含 selected_experts 中的保留专家。
+被剪枝专家不写入 rank_map，也不会在 LoRA 训练阶段创建 LoRA 参数。
 ```
 
 ### 4.2 train_adaptive_lora.py
@@ -296,8 +306,8 @@ finetune/
 2. 加载剪枝后的模型。
 3. 冻结原模型参数。
 4. 读取 rank_map。
-5. 将 rank_map 转换为 PEFT 使用的 rank_pattern 和 alpha_pattern。
-6. 创建 LoraConfig。
+5. 将 rank_map 转换为 PEFT 使用的完整 target_modules、rank_pattern 和 alpha_pattern。
+6. 创建 LoraConfig，只 target rank_map 中出现的保留专家模块。
 7. 使用 get_peft_model 包装模型。
 8. 加载并 tokenize 训练数据。
 9. 使用 Trainer 或 SFTTrainer 训练。
@@ -320,6 +330,16 @@ model.layers.{layer}.mlp.experts.{expert}.down_proj
 def build_rank_pattern(model_type, rank_map, target_modules):
     ...
 ```
+
+该函数应将保留专家展开为完整模块路径，例如：
+
+```text
+model.layers.0.mlp.experts.87.gate_proj
+model.layers.0.mlp.experts.87.up_proj
+model.layers.0.mlp.experts.87.down_proj
+```
+
+不能把宽泛的 `gate_proj,up_proj,down_proj` 直接作为 PEFT target，否则已经置零的剪枝专家也会被挂上 LoRA，破坏剪枝设定。
 
 如果遇到暂不支持的模型类型，第一版可以直接给出明确错误提示。
 
