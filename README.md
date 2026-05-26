@@ -115,6 +115,11 @@ shapley-moe/
 |   |-- save_model.py
 |   |-- run_select.sh
 |   `-- run_prune.sh
+|-- finetune/                     # Post-pruning adaptive LoRA fine-tuning
+|   |-- build_rank_map.py
+|   |-- train_adaptive_lora.py
+|   |-- merge_lora.py
+|   `-- infer_adaptive_lora.py
 |-- evaluation/                   # vLLM serving and EvalScope evaluation
 |-- configs/                      # Model paths and experiment settings
 |-- results/                      # Activations, Shapley values, selected experts
@@ -223,7 +228,59 @@ cd pruning
 
 The pruning script finds the matching selected-expert JSON and writes a pruned Hugging Face model directory.
 
-### 6. Evaluate
+### 6. Optional: Adaptive LoRA Fine-Tuning
+
+The `finetune/` scripts implement a post-pruning LoRA recovery path. The current minimal experimental loop targets Qwen3-30B-A3B on `gsm8k_25` with SHAPE-selected experts.
+
+Build a LoRA rank map from Shapley scores and selected experts:
+
+```bash
+python finetune/build_rank_map.py \
+  --shapley_csv results/qwen3-30b-a3b/shapley_values/gsm8k_25_shapley.csv \
+  --selected_experts results/qwen3-30b-a3b/selected_experts/shapley_alpha_per_layer_gsm8k_25_rate0_8.json \
+  --output results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json \
+  --strategy bucket
+```
+
+Default adaptive rank allocation is layer-wise and only over retained experts:
+
+```text
+Top 20% retained experts -> rank 32
+Next 40% retained experts -> rank 16
+Last 40% retained experts -> rank 8
+```
+
+The matched baselines are:
+
+```text
+uniform: all retained experts use rank 16
+random: same bucket sizes and rank set as bucket, assigned randomly
+```
+
+Rank maps omit pruned experts. During LoRA training, `train_adaptive_lora.py` expands the rank map into full expert module paths and passes only those modules to PEFT, so zeroed/pruned experts do not receive LoRA parameters.
+
+Train an adapter on a pruned model:
+
+```bash
+python finetune/train_adaptive_lora.py \
+  --model_path /path/to/pruned_qwen3_model \
+  --rank_map results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json \
+  --train_file data/calibration/gsm8k_25.json \
+  --output_dir adapters/qwen3_gsm8k_rate0_8_bucket \
+  --model_type qwen3 \
+  --bf16
+```
+
+Merge the adapter before serving or formal evaluation:
+
+```bash
+python finetune/merge_lora.py \
+  --base_model /path/to/pruned_qwen3_model \
+  --adapter adapters/qwen3_gsm8k_rate0_8_bucket \
+  --output /path/to/merged_qwen3_gsm8k_rate0_8_bucket
+```
+
+### 7. Evaluate
 
 ```bash
 cd evaluation
@@ -291,6 +348,7 @@ In the paper, the quality-coverage variant (`alpha_per_layer`) is the main SHAPE
 - Selected expert files:
   - SHAPE: `shapley_{strategy}_{dataset}_rate{XX}.json`
   - Baselines: `{method}_{dataset}_rate{XX}.json`
+- LoRA rank maps: `{dataset}_rate{XX}_{rank_strategy}.json`, where `rank_strategy` is `bucket`, `uniform`, or `random`
 
 ## Citation
 
