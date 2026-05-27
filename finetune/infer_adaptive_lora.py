@@ -12,6 +12,11 @@ from typing import Optional
 
 import torch
 
+try:
+    from finetune.packed_qwen3_lora import is_packed_qwen3_adapter_dir, load_packed_qwen3_lora
+except ImportError:
+    from packed_qwen3_lora import is_packed_qwen3_adapter_dir, load_packed_qwen3_lora
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,20 +70,24 @@ def load_model(model_path: str, adapter: Optional[str], torch_dtype: str, device
 
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=resolve_torch_dtype(torch_dtype),
+        dtype=resolve_torch_dtype(torch_dtype),
         device_map=device_map,
         trust_remote_code=True,
     )
 
     if adapter:
-        try:
-            from peft import PeftModel
-        except ImportError as exc:
-            raise ImportError(
-                "Loading a LoRA adapter requires peft. Install it before running this script."
-            ) from exc
-        logger.info("Loading LoRA adapter: %s", adapter)
-        model = PeftModel.from_pretrained(model, adapter)
+        if is_packed_qwen3_adapter_dir(adapter):
+            logger.info("Loading packed Qwen3 expert LoRA adapter: %s", adapter)
+            load_packed_qwen3_lora(model, adapter)
+        else:
+            try:
+                from peft import PeftModel
+            except ImportError as exc:
+                raise ImportError(
+                    "Loading a LoRA adapter requires peft. Install it before running this script."
+                ) from exc
+            logger.info("Loading PEFT LoRA adapter: %s", adapter)
+            model = PeftModel.from_pretrained(model, adapter)
 
     model.eval()
     return model, tokenizer
