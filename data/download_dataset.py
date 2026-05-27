@@ -123,6 +123,7 @@ def download_and_extract(
     num_samples: int = 25,
     output_file: str = None,
     with_answers: bool = False,
+    all_samples: bool = False,
     dataset_path: str = None,
     dataset_config: str = None,
     split: str = "train",
@@ -137,6 +138,7 @@ def download_and_extract(
         num_samples: Number of samples to extract
         output_file: Output filename (default: auto-generated)
         with_answers: Whether to include answers
+        all_samples: Whether to export the full split
         dataset_path: Custom dataset path (overrides predefined)
         dataset_config: Dataset config name
         split: Dataset split (train/test/validation)
@@ -161,7 +163,10 @@ def download_and_extract(
     print(f"Downloading dataset: {dataset_path}")
     print(f"  Config: {dataset_config}")
     print(f"  Split: {split}")
-    print(f"  Number of samples: {num_samples}")
+    if all_samples or num_samples <= 0:
+        print("  Number of samples: all")
+    else:
+        print(f"  Number of samples: {num_samples}")
 
     # Download dataset
     try:
@@ -176,11 +181,12 @@ def download_and_extract(
         return None
 
     print(f"✓ Dataset download complete! Total {len(dataset)} entries")
-    print(f"Extracting first {num_samples} entries...")
+    sample_count = len(dataset) if all_samples or num_samples <= 0 else min(num_samples, len(dataset))
+    print(f"Extracting {sample_count} entries...")
 
     # Extract samples
     samples = []
-    for i in range(min(num_samples, len(dataset))):
+    for i in range(sample_count):
         item = dataset[i]
 
         # Get text
@@ -224,13 +230,21 @@ def download_and_extract(
     # Generate output filename
     if not output_file:
         suffix = "_with_answers" if with_answers else ""
-        output_file = f"{dataset_name}_{num_samples}{suffix}.json"
+        count_label = "all" if all_samples or num_samples <= 0 else str(num_samples)
+        output_file = f"{dataset_name}_{count_label}{suffix}.json"
 
-    # Save to results folder
+    # Save to results folder by default, but honor absolute/relative custom output paths.
     script_dir = os.path.dirname(__file__)
     results_dir = os.path.join(script_dir, "results")
-    os.makedirs(results_dir, exist_ok=True)
-    output_path = os.path.join(results_dir, output_file)
+    if os.path.isabs(output_file):
+        output_path = output_file
+    else:
+        os.makedirs(results_dir, exist_ok=True)
+        output_path = os.path.join(results_dir, output_file)
+
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(samples, f, indent=4, ensure_ascii=False)
 
@@ -274,6 +288,9 @@ Example usage:
   # Download first 50 entries from GSM8K (with answers)
   python download_dataset.py --dataset gsm8k --num_samples 50 --with_answers
 
+  # Download the full GSM8K train split with answers
+  python download_dataset.py --dataset gsm8k --all_samples --with_answers
+
   # Download first 100 entries from HellaSwag
   python download_dataset.py --dataset hellaswag --num_samples 100
 
@@ -298,6 +315,11 @@ Example usage:
     )
     parser.add_argument(
         "--with_answers", action="store_true", help="Whether to include answers (for few-shot learning)"
+    )
+    parser.add_argument(
+        "--all_samples",
+        action="store_true",
+        help="Export the full split instead of truncating to num_samples",
     )
     parser.add_argument(
         "--dataset_path",
@@ -344,6 +366,7 @@ Example usage:
         num_samples=args.num_samples,
         output_file=args.output,
         with_answers=args.with_answers,
+        all_samples=args.all_samples,
         dataset_path=args.dataset_path,
         dataset_config=args.dataset_config,
         split=args.split,

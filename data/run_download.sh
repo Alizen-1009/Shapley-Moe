@@ -70,6 +70,8 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --with-answers    Include answers (for few-shot)"
+    echo "  --all-samples     Download the full split"
+    echo "  --output PATH     Save to a custom file path"
     echo "  --all             Download all datasets from config file"
     echo "  --list            List all available datasets"
     echo "  --list-config     List datasets from config file"
@@ -82,6 +84,7 @@ show_help() {
     echo "  $0 gsm8k 50                     # Download gsm8k 50 entries"
     echo "  $0 hellaswag 100                # Download hellaswag 100 entries"
     echo "  $0 gsm8k 30 --with-answers      # Download gsm8k 30 entries (with answers)"
+    echo "  $0 gsm8k --all-samples --with-answers --output /root/autodl-tmp/data/gsm8k_all_with_answers.json"
     echo "  $0 --all                        # Download all datasets from config"
     echo "  $0 --list                       # List available datasets"
     echo ""
@@ -95,6 +98,8 @@ DATASET=""
 NUM_SAMPLES=25
 WITH_ANSWERS=""
 DOWNLOAD_ALL=false
+ALL_SAMPLES=""
+OUTPUT_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -120,6 +125,14 @@ while [[ $# -gt 0 ]]; do
         --with-answers)
             WITH_ANSWERS="--with_answers"
             shift
+            ;;
+        --all-samples)
+            ALL_SAMPLES="--all_samples"
+            shift
+            ;;
+        --output)
+            OUTPUT_PATH="$2"
+            shift 2
             ;;
         [0-9]*)
             NUM_SAMPLES=$1
@@ -147,6 +160,9 @@ if [ "$DOWNLOAD_ALL" = true ]; then
     echo "Batch download all datasets from config"
     echo "============================================================================="
     echo "Number of samples: $NUM_SAMPLES"
+    if [ -n "$ALL_SAMPLES" ]; then
+        echo "Number of samples: all"
+    fi
     if [ -n "$WITH_ANSWERS" ]; then
         echo "Include answers: yes"
     fi
@@ -174,6 +190,7 @@ if [ "$DOWNLOAD_ALL" = true ]; then
         if python3 download_dataset.py \
             --dataset "$ds" \
             --num_samples "$NUM_SAMPLES" \
+            $ALL_SAMPLES \
             $WITH_ANSWERS; then
             success=$((success + 1))
             echo "✓ $ds download complete"
@@ -198,18 +215,38 @@ else
     
     echo "============================================================================="
 echo "Downloading dataset: $DATASET"
-echo "Number of samples: $NUM_SAMPLES"
+if [ -n "$ALL_SAMPLES" ]; then
+    echo "Number of samples: all"
+else
+    echo "Number of samples: $NUM_SAMPLES"
+fi
 if [ -n "$WITH_ANSWERS" ]; then
     echo "Include answers: yes"
+fi
+if [ -n "$OUTPUT_PATH" ]; then
+    echo "Output path: $OUTPUT_PATH"
 fi
     echo "============================================================================="
 echo ""
 
 # Run download
-python3 download_dataset.py \
-    --dataset "$DATASET" \
-    --num_samples "$NUM_SAMPLES" \
-    $WITH_ANSWERS
+CMD=(
+    python3 download_dataset.py
+    --dataset "$DATASET"
+    --num_samples "$NUM_SAMPLES"
+)
+
+if [ -n "$ALL_SAMPLES" ]; then
+    CMD+=(--all_samples)
+fi
+if [ -n "$WITH_ANSWERS" ]; then
+    CMD+=(--with_answers)
+fi
+if [ -n "$OUTPUT_PATH" ]; then
+    CMD+=(--output "$OUTPUT_PATH")
+fi
+
+"${CMD[@]}"
 
 echo ""
     echo "============================================================================="
