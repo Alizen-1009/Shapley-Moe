@@ -56,7 +56,7 @@ python finetune/train_adaptive_lora.py \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \
   --learning_rate 2e-4 \
-  --num_train_epochs 3 \
+  --num_train_epochs 1 \
   --logging_steps 5 \
   --save_steps 50 \
   --save_total_limit 2 \

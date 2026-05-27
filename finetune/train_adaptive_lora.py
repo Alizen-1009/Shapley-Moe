@@ -14,6 +14,7 @@ Trainer.
 """
 
 import argparse
+import inspect
 import json
 import logging
 import os
@@ -387,6 +388,52 @@ def log_trainable_parameters(model) -> None:
     logger.info("Trainable parameters: %d / %d (%.4f%%)", trainable, total, ratio)
 
 
+def prepare_output_dir(output_dir: str, overwrite_output_dir: bool, resume_from_checkpoint: Optional[str]) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    existing_entries = [entry for entry in os.listdir(output_dir) if entry not in {".", ".."}]
+    if not existing_entries:
+        return
+
+    if resume_from_checkpoint:
+        logger.info("Output directory %s already exists; resuming from checkpoint %s", output_dir, resume_from_checkpoint)
+        return
+
+    if overwrite_output_dir:
+        logger.warning(
+            "Output directory %s already exists and is not empty. Continuing because --overwrite_output_dir was set.",
+            output_dir,
+        )
+        return
+
+    raise ValueError(
+        f"Output directory {output_dir} already exists and is not empty. "
+        "Use --overwrite_output_dir to continue, or set --resume_from_checkpoint."
+    )
+
+
+def build_trainer(
+    trainer_cls,
+    *,
+    model,
+    training_args,
+    train_dataset,
+    data_collator,
+    tokenizer,
+):
+    trainer_kwargs = {
+        "model": model,
+        "args": training_args,
+        "train_dataset": train_dataset,
+        "data_collator": data_collator,
+    }
+    trainer_signature = inspect.signature(trainer_cls.__init__)
+    if "processing_class" in trainer_signature.parameters:
+        trainer_kwargs["processing_class"] = tokenizer
+    elif "tokenizer" in trainer_signature.parameters:
+        trainer_kwargs["tokenizer"] = tokenizer
+    return trainer_cls(**trainer_kwargs)
+
+
 def train(args: argparse.Namespace) -> None:
     try:
         from peft import LoraConfig, TaskType, get_peft_model
@@ -468,10 +515,10 @@ def train(args: argparse.Namespace) -> None:
     logger.info("Training examples: %d", len(train_dataset))
 
     data_collator = CausalLMDataCollator(tokenizer)
+    prepare_output_dir(args.output_dir, args.overwrite_output_dir, args.resume_from_checkpoint)
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        overwrite_output_dir=args.overwrite_output_dir,
         num_train_epochs=args.num_train_epochs,
         max_steps=args.max_steps,
         per_device_train_batch_size=args.per_device_train_batch_size,
@@ -490,11 +537,13 @@ def train(args: argparse.Namespace) -> None:
         remove_unused_columns=False,
         dataloader_num_workers=args.dataloader_num_workers,
         optim=args.optim,
+        do_train=True,
     )
 
-    trainer = Trainer(
+    trainer = build_trainer(
+        Trainer,
         model=model,
-        args=training_args,
+        training_args=training_args,
         train_dataset=train_dataset,
         data_collator=data_collator,
         tokenizer=tokenizer,
