@@ -16,13 +16,21 @@ Trainer.
 import argparse
 import json
 import logging
-import math
 import os
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence
 
 import torch
 from torch.utils.data import Dataset
+
+try:
+    from finetune.packed_qwen3_lora import (
+        apply_packed_qwen3_expert_lora,
+        save_packed_qwen3_lora,
+        uses_packed_qwen3_experts,
+    )
+except ImportError:
+    from packed_qwen3_lora import apply_packed_qwen3_expert_lora, save_packed_qwen3_lora, uses_packed_qwen3_experts
 
 
 logger = logging.getLogger(__name__)
@@ -356,6 +364,8 @@ def maybe_enable_gradient_checkpointing(model, enabled: bool) -> None:
         return
     if hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
     if hasattr(model, "config"):
         model.config.use_cache = False
 
@@ -368,6 +378,13 @@ def log_rank_pattern_summary(rank_pattern: Mapping[str, int]) -> None:
     logger.info("Rank pattern modules: %d", len(rank_pattern))
     for rank in sorted(counts, reverse=True):
         logger.info("  rank %-4d -> %d modules", rank, counts[rank])
+
+
+def log_trainable_parameters(model) -> None:
+    trainable = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
+    total = sum(parameter.numel() for parameter in model.parameters())
+    ratio = 100.0 * trainable / total if total else 0.0
+    logger.info("Trainable parameters: %d / %d (%.4f%%)", trainable, total, ratio)
 
 
 def train(args: argparse.Namespace) -> None:
@@ -402,25 +419,43 @@ def train(args: argparse.Namespace) -> None:
     logger.info("Loading model from %s", args.model_path)
     model = AutoModelForCausalLM.from_pretrained(
         args.model_path,
-        torch_dtype=resolve_torch_dtype(args.torch_dtype),
+        dtype=resolve_torch_dtype(args.torch_dtype),
         device_map=args.device_map,
         trust_remote_code=True,
     )
     maybe_enable_gradient_checkpointing(model, args.gradient_checkpointing)
-    validate_lora_targets_exist(model, lora_target_modules)
 
-    lora_config = LoraConfig(
-        r=args.default_rank,
-        lora_alpha=args.default_alpha,
-        target_modules=lora_target_modules,
-        rank_pattern=rank_pattern,
-        alpha_pattern=alpha_pattern,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        task_type=TaskType.CAUSAL_LM,
-    )
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    uses_packed_impl = args.model_type == "qwen3" and uses_packed_qwen3_experts(model)
+    if uses_packed_impl:
+        summary = apply_packed_qwen3_expert_lora(
+            model,
+            rank_map=rank_map,
+            target_modules=target_module_suffixes,
+            alpha_scale=args.lora_alpha_scale,
+            dropout=args.lora_dropout,
+        )
+        logger.info(
+            "Applied packed Qwen3 expert LoRA to %d layers and %d experts",
+            summary.wrapped_layers,
+            summary.adapted_experts,
+        )
+        logger.info("Packed expert LoRA trainable parameters: %d", summary.trainable_parameters)
+        log_trainable_parameters(model)
+    else:
+        validate_lora_targets_exist(model, lora_target_modules)
+
+        lora_config = LoraConfig(
+            r=args.default_rank,
+            lora_alpha=args.default_alpha,
+            target_modules=lora_target_modules,
+            rank_pattern=rank_pattern,
+            alpha_pattern=alpha_pattern,
+            lora_dropout=args.lora_dropout,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
 
     logger.info("Loading training data from %s", args.train_file)
     examples = load_text_examples(args.train_file, tokenizer, max_samples=args.max_train_samples)
@@ -469,7 +504,22 @@ def train(args: argparse.Namespace) -> None:
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
     logger.info("Saving LoRA adapter to %s", args.output_dir)
-    trainer.save_model(args.output_dir)
+    if uses_packed_impl:
+        save_packed_qwen3_lora(
+            model,
+            args.output_dir,
+            base_model=args.model_path,
+            rank_map=rank_map,
+            target_modules=target_module_suffixes,
+            alpha_scale=args.lora_alpha_scale,
+            dropout=args.lora_dropout,
+            extra_metadata={
+                "train_file": args.train_file,
+                "max_seq_length": args.max_seq_length,
+            },
+        )
+    else:
+        trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
 
     metadata = {
@@ -483,6 +533,7 @@ def train(args: argparse.Namespace) -> None:
         "default_rank": args.default_rank,
         "default_alpha": args.default_alpha,
         "lora_dropout": args.lora_dropout,
+        "adapter_backend": "packed_qwen3_expert_lora" if uses_packed_impl else "peft_lora",
         "max_seq_length": args.max_seq_length,
         "train_file": args.train_file,
     }

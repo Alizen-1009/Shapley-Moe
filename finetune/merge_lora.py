@@ -14,6 +14,15 @@ from typing import Optional
 
 import torch
 
+try:
+    from finetune.packed_qwen3_lora import (
+        is_packed_qwen3_adapter_dir,
+        load_packed_qwen3_lora,
+        merge_and_unload_packed_qwen3_lora,
+    )
+except ImportError:
+    from packed_qwen3_lora import is_packed_qwen3_adapter_dir, load_packed_qwen3_lora, merge_and_unload_packed_qwen3_lora
+
 
 logger = logging.getLogger(__name__)
 
@@ -72,16 +81,24 @@ def merge_lora(
     logger.info("Loading base model: %s", base_model)
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
-        torch_dtype=resolve_torch_dtype(torch_dtype),
+        dtype=resolve_torch_dtype(torch_dtype),
         device_map=device_map,
         trust_remote_code=True,
     )
 
-    logger.info("Loading LoRA adapter: %s", adapter)
-    model = PeftModel.from_pretrained(model, adapter)
+    if is_packed_qwen3_adapter_dir(adapter):
+        logger.info("Loading packed Qwen3 expert LoRA adapter: %s", adapter)
+        load_packed_qwen3_lora(model, adapter)
+        logger.info("Merging packed expert LoRA into base model")
+        merged_count = merge_and_unload_packed_qwen3_lora(model)
+        logger.info("Merged and unloaded %d packed expert LoRA wrappers", merged_count)
+        merged_model = model
+    else:
+        logger.info("Loading PEFT LoRA adapter: %s", adapter)
+        model = PeftModel.from_pretrained(model, adapter)
 
-    logger.info("Merging adapter into base model")
-    merged_model = model.merge_and_unload()
+        logger.info("Merging adapter into base model")
+        merged_model = model.merge_and_unload()
 
     os.makedirs(output, exist_ok=True)
     logger.info("Saving merged model to: %s", output)
@@ -100,6 +117,7 @@ def merge_lora(
         "base_model": base_model,
         "adapter": adapter,
         "output": output,
+        "adapter_backend": "packed_qwen3_expert_lora" if is_packed_qwen3_adapter_dir(adapter) else "peft_lora",
         "torch_dtype": torch_dtype,
         "device_map": device_map,
         "max_shard_size": max_shard_size,
