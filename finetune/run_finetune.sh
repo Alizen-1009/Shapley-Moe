@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="/root/workspace/Shapley-Moe"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-MODEL_PATH="/root/autodl-tmp/qwen3_gsm8k_rate0_8_pruned"
+MODEL_PATH="${PRUNED_BASE:-/root/autodl-tmp}/qwen3-30b-a3b_rate0_8_pruned"
 RANK_MAP="${PROJECT_DIR}/results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json"
 
-# Replace this with a real SFT file that includes answers.
-TRAIN_FILE="/root/autodl-tmp/data/gsm8k_all_with_answers.json"
+# SFT training data with answers (download with: data/download_sft.sh gsm8k)
+TRAIN_FILE="${PROJECT_DIR}/data/sft/gsm8k_sft.json"
 
 # Save LoRA outputs on the large data disk.
-OUTPUT_DIR="/root/autodl-tmp/lora_outputs/qwen3_gsm8k_rate0_8_bucket"
+OUTPUT_DIR="${ADAPTER_BASE:-/root/autodl-tmp/lora_outputs}/qwen3_gsm8k_rate0_8_bucket"
 
 mkdir -p "$(dirname "$OUTPUT_DIR")"
 

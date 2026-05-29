@@ -5011,8 +5011,8 @@
     "rank_scope": "selected_experts_only",
     "pruned_experts_omitted": true,
     "strategy": "bucket",
-    "shapley_csv": "/root/workspace/Shapley-Moe/results/qwen3-30b-a3b/shapley_values/gsm8k_25_shapley.csv",
-    "selected_experts": "/root/workspace/Shapley-Moe/results/qwen3-30b-a3b/selected_experts/shapley_alpha_per_layer_gsm8k_25_rate0_8.json",
+    "shapley_csv": "results/qwen3-30b-a3b/shapley_values/gsm8k_25_shapley.csv",
+    "selected_experts": "results/qwen3-30b-a3b/selected_experts/shapley_alpha_per_layer_gsm8k_25_rate0_8.json",
     "score_column": "Shapley_Value",
     "rank_buckets": [
       32,

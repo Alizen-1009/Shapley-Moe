@@ -361,6 +361,8 @@ def apply_packed_qwen3_expert_lora(
             alpha_scale=alpha_scale,
             dropout=dropout,
         )
+        base_device = existing.gate_up_proj.device
+        wrapper.adapters = wrapper.adapters.to(base_device)
         layer.mlp.experts = wrapper
         wrapped_layers += 1
         adapted_experts += len(wrapper.adapters)
@@ -444,7 +446,7 @@ def load_packed_qwen3_lora(model, adapter_dir: str) -> Dict[str, object]:
     )
 
     weights_path = os.path.join(adapter_dir, PACKED_QWEN3_ADAPTER_WEIGHTS)
-    state_dict = torch.load(weights_path, map_location="cpu")
+    state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
 
     for module_name, wrapper in _iter_layer_wrappers(model):
         prefix = f"{module_name}."
