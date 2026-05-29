@@ -47,10 +47,11 @@ DEEPSEEK_EXPERT_MODULE_TEMPLATE = "model.layers.{layer}.mlp.experts.{expert}.{mo
 @dataclass
 class TextExample:
     text: str
+    prompt_text: Optional[str] = None
 
 
 class CausalLMDataset(Dataset):
-    """Simple tokenized dataset for causal language model fine-tuning."""
+    """Tokenized dataset for causal LM fine-tuning with optional SFT loss masking."""
 
     def __init__(
         self,
@@ -58,8 +59,11 @@ class CausalLMDataset(Dataset):
         tokenizer,
         max_seq_length: int,
         add_eos_token: bool = True,
+        mask_prompt: bool = True,
     ):
         self.features = []
+        label_pad_id = -100
+
         for example in examples:
             text = example.text.strip()
             if not text:
@@ -77,11 +81,24 @@ class CausalLMDataset(Dataset):
             if not input_ids:
                 continue
 
+            labels = list(input_ids)
+
+            if mask_prompt and example.prompt_text:
+                prompt_encoded = tokenizer(
+                    example.prompt_text,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    add_special_tokens=True,
+                )
+                prompt_len = len(prompt_encoded["input_ids"])
+                for i in range(min(prompt_len, len(labels))):
+                    labels[i] = label_pad_id
+
             self.features.append(
                 {
                     "input_ids": input_ids,
                     "attention_mask": encoded["attention_mask"],
-                    "labels": list(input_ids),
+                    "labels": labels,
                 }
             )
 
@@ -255,18 +272,29 @@ def read_json_or_jsonl(path: str) -> List[Mapping[str, object]]:
     raise ValueError(f"Unsupported data format in {path}")
 
 
-def format_messages(record: Mapping[str, object], tokenizer) -> Optional[str]:
+def format_messages(record: Mapping[str, object], tokenizer) -> Optional[tuple[str, Optional[str]]]:
+    """Returns (full_text, prompt_text) or None."""
     messages = record.get("messages")
     if not isinstance(messages, list):
         return None
 
     if hasattr(tokenizer, "apply_chat_template"):
         try:
-            return tokenizer.apply_chat_template(
+            full_text = tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
+            non_assistant = [m for m in messages if m.get("role") != "assistant"]
+            if non_assistant and len(non_assistant) < len(messages):
+                prompt_text = tokenizer.apply_chat_template(
+                    non_assistant,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            else:
+                prompt_text = None
+            return full_text, prompt_text
         except Exception as exc:
             logger.warning("Failed to apply chat template, falling back to plain messages: %s", exc)
 
@@ -277,48 +305,63 @@ def format_messages(record: Mapping[str, object], tokenizer) -> Optional[str]:
         role = str(message.get("role", "user"))
         content = str(message.get("content", ""))
         lines.append(f"{role}: {content}")
-    return "\n".join(lines)
+    return "\n".join(lines), None
 
 
-def format_record(record: Mapping[str, object], tokenizer) -> Optional[str]:
+def format_record(record: Mapping[str, object], tokenizer) -> Optional[tuple[str, Optional[str]]]:
     """
-    Convert common SFT/calibration record formats to a single training string.
+    Convert common SFT/calibration record formats to (full_text, prompt_text).
+
+    prompt_text is the input portion that should be masked during loss computation.
+    If prompt_text is None, loss is computed on the full sequence.
 
     Supported examples:
-    - {"text": "..."}
+    - {"text": "...", "question": "...", "answer": "..."}
     - {"prompt": "...", "response": "..."}
     - {"instruction": "...", "input": "...", "output": "..."}
     - {"question": "...", "answer": "..."}
     - {"messages": [{"role": "user", "content": "..."}, ...]}
     """
-    messages_text = format_messages(record, tokenizer)
-    if messages_text:
-        return messages_text
+    messages_result = format_messages(record, tokenizer)
+    if messages_result:
+        return messages_result
 
-    if isinstance(record.get("text"), str):
-        return str(record["text"])
+    # Records with explicit question/answer split (e.g. from download_dataset.py --with_answers)
+    question = record.get("question")
+    answer = record.get("answer")
+    if isinstance(question, str) and isinstance(answer, str):
+        full_text = f"Question:\n{question}\n\nAnswer:\n{answer}"
+        prompt_text = f"Question:\n{question}\n\nAnswer:\n"
+        return full_text, prompt_text
 
     prompt = record.get("prompt")
     response = record.get("response", record.get("completion", record.get("output")))
     if isinstance(prompt, str) and isinstance(response, str):
-        return f"{prompt}\n{response}"
+        return f"{prompt}\n{response}", f"{prompt}\n"
     if isinstance(prompt, str):
-        return prompt
+        return prompt, None
 
     instruction = record.get("instruction")
     output = record.get("output", record.get("answer", record.get("response")))
     input_text = record.get("input", "")
     if isinstance(instruction, str) and isinstance(output, str):
         if isinstance(input_text, str) and input_text.strip():
-            return f"Instruction:\n{instruction}\n\nInput:\n{input_text}\n\nAnswer:\n{output}"
-        return f"Instruction:\n{instruction}\n\nAnswer:\n{output}"
+            full = f"Instruction:\n{instruction}\n\nInput:\n{input_text}\n\nAnswer:\n{output}"
+            prompt_part = f"Instruction:\n{instruction}\n\nInput:\n{input_text}\n\nAnswer:\n"
+        else:
+            full = f"Instruction:\n{instruction}\n\nAnswer:\n{output}"
+            prompt_part = f"Instruction:\n{instruction}\n\nAnswer:\n"
+        return full, prompt_part
 
-    question = record.get("question")
-    answer = record.get("answer")
-    if isinstance(question, str) and isinstance(answer, str):
-        return f"Question:\n{question}\n\nAnswer:\n{answer}"
+    if isinstance(record.get("text"), str):
+        text = str(record["text"])
+        # If text field exists alongside question field, use question as prompt
+        if isinstance(question, str):
+            return text, question
+        return text, None
+
     if isinstance(question, str):
-        return question
+        return question, None
 
     return None
 
@@ -329,14 +372,18 @@ def load_text_examples(path: str, tokenizer, max_samples: Optional[int] = None) 
 
     for record in records:
         if isinstance(record, str):
-            text = record
+            text, prompt_text = record, None
         elif isinstance(record, dict):
-            text = format_record(record, tokenizer)
+            result = format_record(record, tokenizer)
+            if result is None:
+                text, prompt_text = None, None
+            else:
+                text, prompt_text = result
         else:
-            text = None
+            text, prompt_text = None, None
 
         if text and text.strip():
-            examples.append(TextExample(text=text))
+            examples.append(TextExample(text=text, prompt_text=prompt_text))
 
         if max_samples is not None and len(examples) >= max_samples:
             break
@@ -506,16 +553,48 @@ def train(args: argparse.Namespace) -> None:
 
     logger.info("Loading training data from %s", args.train_file)
     examples = load_text_examples(args.train_file, tokenizer, max_samples=args.max_train_samples)
+
+    eval_dataset = None
+    if args.eval_file:
+        logger.info("Loading eval data from %s", args.eval_file)
+        eval_examples = load_text_examples(args.eval_file, tokenizer, max_samples=args.max_train_samples)
+        eval_dataset = CausalLMDataset(
+            examples=eval_examples,
+            tokenizer=tokenizer,
+            max_seq_length=args.max_seq_length,
+            add_eos_token=not args.no_add_eos_token,
+            mask_prompt=not args.no_mask_prompt,
+        )
+        logger.info("Eval examples: %d", len(eval_dataset))
+    elif args.eval_split_ratio > 0 and len(examples) > 10:
+        split_idx = max(1, int(len(examples) * (1 - args.eval_split_ratio)))
+        eval_examples = examples[split_idx:]
+        examples = examples[:split_idx]
+        eval_dataset = CausalLMDataset(
+            examples=eval_examples,
+            tokenizer=tokenizer,
+            max_seq_length=args.max_seq_length,
+            add_eos_token=not args.no_add_eos_token,
+            mask_prompt=not args.no_mask_prompt,
+        )
+        logger.info("Split eval examples: %d", len(eval_dataset))
+
     train_dataset = CausalLMDataset(
         examples=examples,
         tokenizer=tokenizer,
         max_seq_length=args.max_seq_length,
         add_eos_token=not args.no_add_eos_token,
+        mask_prompt=not args.no_mask_prompt,
     )
     logger.info("Training examples: %d", len(train_dataset))
 
     data_collator = CausalLMDataCollator(tokenizer)
     prepare_output_dir(args.output_dir, args.overwrite_output_dir, args.resume_from_checkpoint)
+
+    eval_kwargs = {}
+    if eval_dataset is not None:
+        eval_kwargs["eval_strategy"] = "steps"
+        eval_kwargs["eval_steps"] = args.eval_steps if args.eval_steps > 0 else args.save_steps
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
@@ -538,6 +617,7 @@ def train(args: argparse.Namespace) -> None:
         dataloader_num_workers=args.dataloader_num_workers,
         optim=args.optim,
         do_train=True,
+        **eval_kwargs,
     )
 
     trainer = build_trainer(
@@ -548,6 +628,8 @@ def train(args: argparse.Namespace) -> None:
         data_collator=data_collator,
         tokenizer=tokenizer,
     )
+    if eval_dataset is not None:
+        trainer.eval_dataset = eval_dataset
 
     logger.info("Starting training")
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
@@ -617,6 +699,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max_seq_length", type=int, default=1024, help="Max training sequence length.")
     parser.add_argument("--max_train_samples", type=int, default=None, help="Optional debug sample limit.")
     parser.add_argument("--no_add_eos_token", action="store_true", help="Do not append eos token to each example.")
+    parser.add_argument("--no_mask_prompt", action="store_true", help="Disable SFT-style prompt masking (compute loss on full sequence).")
+    parser.add_argument("--eval_file", default=None, help="Optional eval data file. If not set, uses --eval_split_ratio.")
+    parser.add_argument("--eval_split_ratio", type=float, default=0.1, help="Hold out this fraction of train data for eval (0 to disable).")
+    parser.add_argument("--eval_steps", type=int, default=0, help="Eval every N steps (0 = same as save_steps).")
 
     parser.add_argument("--torch_dtype", default="auto", choices=["auto", "bf16", "bfloat16", "fp16", "float16", "fp32", "float32"])
     parser.add_argument("--device_map", default="auto", help="Device map for from_pretrained.")
