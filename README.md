@@ -12,6 +12,7 @@ Sparse MoE models activate only a few experts per token, but the full expert poo
   <img src="assets/shape_cover.png" alt="SHAPE cover illustration" width="92%">
 </p>
 
+
 ## Highlights
 
 - **Coalition-aware expert valuation.** SHAPE treats routed top-k experts as a coalition instead of scoring each expert independently.
