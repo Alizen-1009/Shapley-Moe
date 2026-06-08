@@ -1,0 +1,36 @@
+# SHAPE — core dependencies (curated)
+# Captured from the `shapley` conda env (Python 3.12). For an exact, fully
+# pinned snapshot of the whole environment use requirements-lock.txt instead.
+#
+# NOTE on CUDA wheels: torch and vllm are CUDA-specific. This env uses CUDA 13.0
+# builds (torch 2.11.0+cu130). Install torch/vllm from the matching index for
+# your CUDA version, e.g.:
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu130
+# then install the rest with:  pip install -r requirements.txt
+
+# --- Core model stack ---
+torch==2.11.0
+transformers==5.9.0
+tokenizers==0.22.2
+safetensors==0.7.0
+accelerate==1.13.0
+
+# --- Pruning / Shapley analysis ---
+numpy==2.3.5
+pandas==3.0.3
+pyyaml==6.0.3
+tqdm==4.67.3
+
+# --- Calibration / distillation data ---
+datasets==4.8.4
+sentencepiece==0.2.1
+einops==0.8.2
+
+# --- Adaptive LoRA fine-tuning (SFT + DPO) ---
+peft==0.19.1
+# trl is NOT required: the DPO loss in finetune/train_dpo_lora.py is implemented
+# directly (reference distribution via disabling the adapters).
+
+# --- Serving + evaluation ---
+vllm==0.22.0
+evalscope==1.8.0
