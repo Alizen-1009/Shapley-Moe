@@ -27,11 +27,17 @@ from torch.utils.data import Dataset
 try:
     from finetune.packed_qwen3_lora import (
         apply_packed_qwen3_expert_lora,
+        has_packed_qwen3_wrappers,
         save_packed_qwen3_lora,
         uses_packed_qwen3_experts,
     )
 except ImportError:
-    from packed_qwen3_lora import apply_packed_qwen3_expert_lora, save_packed_qwen3_lora, uses_packed_qwen3_experts
+    from packed_qwen3_lora import (
+        apply_packed_qwen3_expert_lora,
+        has_packed_qwen3_wrappers,
+        save_packed_qwen3_lora,
+        uses_packed_qwen3_experts,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -458,6 +464,30 @@ def prepare_output_dir(output_dir: str, overwrite_output_dir: bool, resume_from_
     )
 
 
+def make_packed_lora_trainer(trainer_base, packed_save_kwargs: Mapping[str, object]):
+    """Wrap a Trainer so checkpoints save only the packed expert adapter.
+
+    The packed Qwen3 adapter is a plain nn.Module, not a PeftModel, so the stock
+    Trainer._save serializes the full 30B model at every checkpoint (~60GB, slow).
+    This override writes just the small adapter (.bin) instead.
+    """
+
+    class _PackedLoRATrainer(trainer_base):
+        def _save(self, output_dir: Optional[str] = None, state_dict=None):
+            output_dir = output_dir if output_dir is not None else self.args.output_dir
+            if has_packed_qwen3_wrappers(self.model):
+                os.makedirs(output_dir, exist_ok=True)
+                save_packed_qwen3_lora(self.model, output_dir, **packed_save_kwargs)
+                processing = getattr(self, "processing_class", None) or getattr(self, "tokenizer", None)
+                if processing is not None:
+                    processing.save_pretrained(output_dir)
+                torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
+            else:
+                super()._save(output_dir, state_dict)
+
+    return _PackedLoRATrainer
+
+
 def build_trainer(
     trainer_cls,
     *,
@@ -623,8 +653,21 @@ def train(args: argparse.Namespace) -> None:
         **eval_kwargs,
     )
 
+    trainer_cls = Trainer
+    if uses_packed_impl:
+        trainer_cls = make_packed_lora_trainer(
+            Trainer,
+            dict(
+                base_model=args.model_path,
+                rank_map=rank_map,
+                target_modules=target_module_suffixes,
+                alpha_scale=args.lora_alpha_scale,
+                dropout=args.lora_dropout,
+            ),
+        )
+
     trainer = build_trainer(
-        Trainer,
+        trainer_cls,
         model=model,
         training_args=training_args,
         train_dataset=train_dataset,

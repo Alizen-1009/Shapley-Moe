@@ -42,12 +42,14 @@ SHAPLEY_CSV="${RESULTS_DIR}/shapley_values/${DATASET}_shapley.csv"
 # Distilled SFT data (run data/download_sft.sh first).
 TRAIN_FILE="${PROJECT_DIR}/data/sft/gsm8k_distill.json"
 
-# Pruned model directory pattern: {PRUNED_BASE}/{MODEL_NAME}_rate{RATE}_pruned
-PRUNED_BASE="${PRUNED_BASE:-/root/autodl-tmp}"
+# Pruned model directory: {PRUNED_BASE}/{PRUNED_NAME_TPL}, with {rate} -> 0_8 / 0_6.
+# Defaults match the local checkpoints, e.g. /root/models/Qwen3-30B-pruned-rate0_8
+PRUNED_BASE="${PRUNED_BASE:-/root/models}"
+PRUNED_NAME_TPL="${PRUNED_NAME_TPL:-Qwen3-30B-pruned-rate{rate}}"
 # Output adapters base directory
-ADAPTER_BASE="${ADAPTER_BASE:-/root/autodl-tmp/lora_outputs}"
+ADAPTER_BASE="${ADAPTER_BASE:-/root/models/lora_outputs}"
 # Merged models base directory
-MERGED_BASE="${MERGED_BASE:-/root/autodl-tmp/merged_models}"
+MERGED_BASE="${MERGED_BASE:-/root/models/merged_models}"
 
 # Training hyperparameters
 MAX_SEQ_LENGTH=1024
@@ -175,7 +177,7 @@ if [ "$STEP" = "all" ] || [ "$STEP" = "train" ]; then
     echo ""
 
     for rate in $KEEP_RATES; do
-        MODEL_PATH="${PRUNED_BASE}/${MODEL_NAME}_rate${rate}_pruned"
+        MODEL_PATH="${PRUNED_BASE}/${PRUNED_NAME_TPL/\{rate\}/$rate}"
         if [ "$DRY_RUN" = false ] && [ ! -d "$MODEL_PATH" ]; then
             log_warn "Pruned model not found, skipping: ${MODEL_PATH}"
             continue
@@ -235,7 +237,7 @@ if [ "$STEP" = "all" ] || [ "$STEP" = "merge" ]; then
     echo ""
 
     for rate in $KEEP_RATES; do
-        MODEL_PATH="${PRUNED_BASE}/${MODEL_NAME}_rate${rate}_pruned"
+        MODEL_PATH="${PRUNED_BASE}/${PRUNED_NAME_TPL/\{rate\}/$rate}"
         if [ "$DRY_RUN" = false ] && [ ! -d "$MODEL_PATH" ]; then
             log_warn "Pruned model not found, skipping: ${MODEL_PATH}"
             continue

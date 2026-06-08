@@ -34,9 +34,9 @@ RANK_STRATEGIES="bucket uniform random"
 RESULTS_DIR="${PROJECT_DIR}/results/${MODEL_NAME}"
 DPO_FILE="${PROJECT_DIR}/data/sft/gsm8k_dpo.json"
 
-PRUNED_BASE="${PRUNED_BASE:-/root/autodl-tmp}"
-ADAPTER_BASE="${ADAPTER_BASE:-/root/autodl-tmp/lora_outputs}"
-MERGED_BASE="${MERGED_BASE:-/root/autodl-tmp/merged_models}"
+PRUNED_BASE="${PRUNED_BASE:-/root/models}"
+ADAPTER_BASE="${ADAPTER_BASE:-/root/models/lora_outputs}"
+MERGED_BASE="${MERGED_BASE:-/root/models/merged_models}"
 
 # DPO hyperparameters
 BETA="${BETA:-0.1}"

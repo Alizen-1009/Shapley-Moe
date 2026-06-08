@@ -34,6 +34,7 @@ try:
         build_rank_pattern,
         build_trainer,
         load_rank_map,
+        make_packed_lora_trainer,
         maybe_enable_gradient_checkpointing,
         parse_csv_list,
         prepare_output_dir,
@@ -52,6 +53,7 @@ except ImportError:
         build_rank_pattern,
         build_trainer,
         load_rank_map,
+        make_packed_lora_trainer,
         maybe_enable_gradient_checkpointing,
         parse_csv_list,
         prepare_output_dir,
@@ -338,7 +340,20 @@ def train(args: argparse.Namespace) -> None:
         do_train=True,
     )
 
-    dpo_trainer_cls = make_dpo_trainer_cls(Trainer)
+    trainer_base = Trainer
+    if uses_packed_impl:
+        trainer_base = make_packed_lora_trainer(
+            Trainer,
+            dict(
+                base_model=args.model_path,
+                rank_map=rank_map,
+                target_modules=target_module_suffixes,
+                alpha_scale=args.lora_alpha_scale,
+                dropout=args.lora_dropout,
+                extra_metadata={"stage": "dpo", "beta": args.beta},
+            ),
+        )
+    dpo_trainer_cls = make_dpo_trainer_cls(trainer_base)
     trainer = build_trainer(
         dpo_trainer_cls,
         model=model,
