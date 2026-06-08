@@ -464,6 +464,7 @@ def build_trainer(
     model,
     training_args,
     train_dataset,
+    eval_dataset=None,
     data_collator,
     tokenizer,
 ):
@@ -473,6 +474,8 @@ def build_trainer(
         "train_dataset": train_dataset,
         "data_collator": data_collator,
     }
+    if eval_dataset is not None:
+        trainer_kwargs["eval_dataset"] = eval_dataset
     trainer_signature = inspect.signature(trainer_cls.__init__)
     if "processing_class" in trainer_signature.parameters:
         trainer_kwargs["processing_class"] = tokenizer
@@ -625,11 +628,10 @@ def train(args: argparse.Namespace) -> None:
         model=model,
         training_args=training_args,
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         data_collator=data_collator,
         tokenizer=tokenizer,
     )
-    if eval_dataset is not None:
-        trainer.eval_dataset = eval_dataset
 
     logger.info("Starting training")
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)

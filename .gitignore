@@ -6,3 +6,7 @@ __pycache__/
 
 # Generated distillation / SFT data (regenerable via data/download_sft.sh)
 data/sft/
+
+# Training artifacts (LoRA adapters, merged models, misc outputs) - too large for git
+adapters/
+outputs/
