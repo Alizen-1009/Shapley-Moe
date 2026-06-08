@@ -84,11 +84,14 @@ def _encode_side(
     add_eos_token: bool,
 ) -> Optional[Dict[str, List[int]]]:
     """Tokenize prompt+answer into input_ids/labels with the prompt masked out."""
-    prompt_ids = tokenizer.apply_chat_template(
+    # Tokenize via the templated string (version-agnostic: in transformers>=5
+    # apply_chat_template(tokenize=True) returns a BatchEncoding, not a list).
+    prompt_text = tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt}],
-        tokenize=True,
+        tokenize=False,
         add_generation_prompt=True,
     )
+    prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
     answer_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
     if add_eos_token and tokenizer.eos_token_id is not None:
         if not answer_ids or answer_ids[-1] != tokenizer.eos_token_id:
