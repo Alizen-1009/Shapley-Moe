@@ -39,7 +39,8 @@ RANK_STRATEGIES="bucket uniform random"
 # Paths
 RESULTS_DIR="${PROJECT_DIR}/results/${MODEL_NAME}"
 SHAPLEY_CSV="${RESULTS_DIR}/shapley_values/${DATASET}_shapley.csv"
-TRAIN_FILE="${PROJECT_DIR}/data/sft/gsm8k_sft.json"
+# Distilled SFT data (run data/download_sft.sh first).
+TRAIN_FILE="${PROJECT_DIR}/data/sft/gsm8k_distill.json"
 
 # Pruned model directory pattern: {PRUNED_BASE}/{MODEL_NAME}_rate{RATE}_pruned
 PRUNED_BASE="${PRUNED_BASE:-/root/autodl-tmp}"

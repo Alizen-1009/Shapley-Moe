@@ -3,3 +3,6 @@
 .outputs
 __pycache__/
 .DS_Store
+
+# Generated distillation / SFT data (regenerable via data/download_sft.sh)
+data/sft/

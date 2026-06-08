@@ -17,8 +17,9 @@ from __future__ import annotations
 import json
 import math
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -148,6 +149,9 @@ class PackedQwen3ExpertsLoRA(nn.Module):
         self.dropout = float(dropout)
         self.target_modules = tuple(target_modules)
         self.merged = False
+        # When disabled the wrapper behaves like the unadapted base layer. Used to
+        # obtain reference-model logprobs for DPO without a second model copy.
+        self.enabled = True
 
         gate_up_shape = tuple(base_layer.gate_up_proj.shape)
         down_shape = tuple(base_layer.down_proj.shape)
@@ -207,7 +211,7 @@ class PackedQwen3ExpertsLoRA(nn.Module):
         top_k_index: torch.Tensor,
         top_k_weights: torch.Tensor,
     ) -> torch.Tensor:
-        if self.merged:
+        if self.merged or not self.enabled:
             return self.base_layer(hidden_states, top_k_index, top_k_weights)
 
         final_hidden_states = torch.zeros_like(hidden_states)
@@ -323,6 +327,30 @@ def _iter_layer_wrappers(model) -> Iterable[tuple[str, PackedQwen3ExpertsLoRA]]:
     for module_name, module in model.named_modules():
         if isinstance(module, PackedQwen3ExpertsLoRA):
             yield module_name, module
+
+
+def has_packed_qwen3_wrappers(model) -> bool:
+    """True if packed expert LoRA wrappers are currently applied to the model."""
+    return any(True for _ in _iter_layer_wrappers(model))
+
+
+def set_packed_qwen3_adapters_enabled(model, enabled: bool) -> None:
+    for _, wrapper in _iter_layer_wrappers(model):
+        wrapper.enabled = bool(enabled)
+
+
+@contextmanager
+def packed_qwen3_adapters_disabled(model) -> Iterator[None]:
+    """Temporarily disable packed expert adapters (reference forward for DPO)."""
+    wrappers = [wrapper for _, wrapper in _iter_layer_wrappers(model)]
+    previous = [wrapper.enabled for wrapper in wrappers]
+    for wrapper in wrappers:
+        wrapper.enabled = False
+    try:
+        yield
+    finally:
+        for wrapper, state in zip(wrappers, previous):
+            wrapper.enabled = state
 
 
 def apply_packed_qwen3_expert_lora(

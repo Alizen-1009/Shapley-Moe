@@ -28,12 +28,22 @@ cd pruning && ./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.8
 cd pruning && ./run_prune.sh -m qwen3-30b-a3b -d gsm8k_25 -r 0.8
 
 # 6. (Optional) Adaptive LoRA fine-tuning on pruned model
+# 6a. Distill SFT data from the ORIGINAL (unpruned) teacher with RFT filtering
+cd data && TP=8 ./download_sft.sh gsm8k     # -> data/sft/gsm8k_distill.json
+# 6b. Build rank map, train, merge
 python finetune/build_rank_map.py --shapley_csv results/.../gsm8k_25_shapley.csv \
   --selected_experts results/.../shapley_alpha_per_layer_gsm8k_25_rate0_8.json \
   --output results/.../gsm8k_25_rate0_8_bucket.json --strategy bucket
 python finetune/train_adaptive_lora.py --model_path /path/to/pruned --rank_map results/.../rank_map.json \
-  --train_file data/calibration/gsm8k_25.json --output_dir adapters/run_name --model_type qwen3 --bf16
+  --train_file data/sft/gsm8k_distill.json --output_dir adapters/run_name --model_type qwen3 --bf16
 python finetune/merge_lora.py --base_model /path/to/pruned --adapter adapters/run_name --output /path/to/merged
+# Or run the full {rate} x {bucket,uniform,random} matrix:
+cd finetune && ./run_experiments.sh
+
+# 6c. (Optional) DPO stage on top of the SFT-merged model
+#     Distillation already emitted preference pairs -> data/sft/gsm8k_dpo.json
+#     Reference model = adapters disabled (no second model copy).
+cd finetune && ./run_dpo.sh        # train DPO LoRA + merge, all rate x strategy
 
 # 7. Evaluate with vLLM + EvalScope
 cd evaluation && ./vllm-server.sh qwen3-30b-a3b
@@ -49,8 +59,10 @@ Key modules:
 - `analysis/calc_shapley.py` — Computes coalition-aware Shapley values from expert co-activation counts. Uses a K-expert marginal contribution formula with sub-coalition frequencies.
 - `pruning/methods/select_by_shapley.py` — Implements four selection strategies (alpha_per_layer, alpha_global, topk_per_layer, topk_global). `alpha_per_layer` is the primary SHAPE method: bisection search for alpha threshold that achieves target keep rate while preserving per-layer Shapley mass.
 - `pruning/save_model.py` — `ModelPruner` class loads model, zeros out unselected expert weights (or adds gate bias), saves as safetensors.
-- `finetune/train_adaptive_lora.py` — Expert-wise adaptive LoRA training. Has a special packed implementation for Qwen3 (`packed_qwen3_lora.py`) that handles packed expert weight tensors.
+- `finetune/train_adaptive_lora.py` — Expert-wise adaptive LoRA SFT training. Has a special packed implementation for Qwen3 (`packed_qwen3_lora.py`) that handles packed expert weight tensors.
+- `finetune/train_dpo_lora.py` — Optional DPO stage after SFT. Reuses the same rank_map and packed/PEFT LoRA placement; computes the DPO reference distribution by *disabling* the adapters (packed: `packed_qwen3_adapters_disabled`; PEFT: `disable_adapter`) instead of loading a second model. Train on the SFT-merged model; orchestrated by `finetune/run_dpo.sh`.
 - `finetune/build_rank_map.py` — Generates per-expert LoRA rank assignments using bucket/uniform/random strategies.
+- `data/distill_sft.py` — Distills SFT training data from the original (unpruned) teacher via vLLM, using RFT rejection sampling (keeps only completions whose final answer matches gold). Output `data/sft/{dataset}_distill.json` feeds `train_adaptive_lora.py`. Driven by `data/download_sft.sh`.
 
 ## Configuration
 

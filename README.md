@@ -96,10 +96,13 @@ Pruning directly reduces the resident expert footprint. The measured peak VRAM d
 
 ```text
 shapley-moe/
-|-- data/                         # Calibration data and download scripts
-|   |-- calibration/              # 25-example calibration sets
+|-- data/                         # Calibration data, distillation, download scripts
+|   |-- calibration/              # 25-example calibration sets (for Shapley)
+|   |-- sft/                      # Distilled SFT/DPO training data (generated)
 |   |-- download_dataset.py
-|   `-- run_download.sh
+|   |-- run_download.sh
+|   |-- distill_sft.py            # Teacher distillation + RFT (SFT and DPO data)
+|   `-- download_sft.sh           # Distillation pipeline entry
 |-- analysis/                     # Routing trace collection and Shapley scoring
 |   |-- collect_activations.py
 |   |-- calc_shapley.py
@@ -117,10 +120,14 @@ shapley-moe/
 |   |-- run_select.sh
 |   `-- run_prune.sh
 |-- finetune/                     # Post-pruning adaptive LoRA fine-tuning
-|   |-- build_rank_map.py
-|   |-- train_adaptive_lora.py
+|   |-- build_rank_map.py         # Shapley-guided per-expert LoRA ranks
+|   |-- train_adaptive_lora.py    # SFT stage (adaptive LoRA)
+|   |-- train_dpo_lora.py         # Optional DPO stage (reference = adapters off)
+|   |-- packed_qwen3_lora.py      # Packed-expert LoRA implementation for Qwen3
 |   |-- merge_lora.py
-|   `-- infer_adaptive_lora.py
+|   |-- infer_adaptive_lora.py
+|   |-- run_experiments.sh        # SFT matrix: {rate} x {bucket,uniform,random}
+|   `-- run_dpo.sh                # DPO matrix orchestration
 |-- evaluation/                   # vLLM serving and EvalScope evaluation
 |-- configs/                      # Model paths and experiment settings
 |-- results/                      # Activations, Shapley values, selected experts
@@ -231,7 +238,26 @@ The pruning script finds the matching selected-expert JSON and writes a pruned H
 
 ### 6. Optional: Adaptive LoRA Fine-Tuning
 
-The `finetune/` scripts implement a post-pruning LoRA recovery path. The current minimal experimental loop targets Qwen3-30B-A3B on `gsm8k_25` with SHAPE-selected experts.
+The `finetune/` scripts implement a post-pruning LoRA recovery path. The current minimal experimental loop targets Qwen3-30B-A3B on `gsm8k_25` with SHAPE-selected experts. The goal is to *recover* the capability lost by pruning, measured as a recovery rate against the unpruned model.
+
+#### 6a. Distill Training Data
+
+The 25-example calibration sets are for Shapley estimation, **not** for training. Training data is distilled from the **original (unpruned) teacher model**: it answers the full training split, and rejection sampling (RFT) keeps only completions whose final answer matches the gold answer. Using the original model (rather than a stronger external model) keeps the recovery-rate narrative clean and the data distribution aligned with the student.
+
+```bash
+cd data
+
+# Download the full train-split question pool, then distill via vLLM with RFT.
+# Produces data/sft/gsm8k_distill.json (SFT) and data/sft/gsm8k_dpo.json (DPO).
+TEACHER_MODEL=/path/to/original_qwen3 TP=8 NUM_SAMPLES=4 ./download_sft.sh gsm8k
+
+# Quick smoke test on 50 questions.
+MAX_QUESTIONS=50 ./download_sft.sh gsm8k
+```
+
+A single sampling pass yields both datasets: correct completions become SFT targets; correct-vs-incorrect completions for the same prompt become DPO preference pairs.
+
+#### 6b. Build Rank Map, Train (SFT), Merge
 
 Build a LoRA rank map from Shapley scores and selected experts:
 
@@ -260,13 +286,13 @@ random: same bucket sizes and rank set as bucket, assigned randomly
 
 Rank maps omit pruned experts. During LoRA training, `train_adaptive_lora.py` expands the rank map into full expert module paths and passes only those modules to PEFT, so zeroed/pruned experts do not receive LoRA parameters.
 
-Train an adapter on a pruned model:
+Train an adapter on a pruned model using the distilled SFT data:
 
 ```bash
 python finetune/train_adaptive_lora.py \
   --model_path /path/to/pruned_qwen3_model \
   --rank_map results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json \
-  --train_file data/calibration/gsm8k_25.json \
+  --train_file data/sft/gsm8k_distill.json \
   --output_dir adapters/qwen3_gsm8k_rate0_8_bucket \
   --model_type qwen3 \
   --bf16
@@ -280,6 +306,26 @@ python finetune/merge_lora.py \
   --adapter adapters/qwen3_gsm8k_rate0_8_bucket \
   --output /path/to/merged_qwen3_gsm8k_rate0_8_bucket
 ```
+
+The whole `{rate} x {bucket, uniform, random}` matrix (rank map -> train -> merge) can be run in one command:
+
+```bash
+cd finetune && ./run_experiments.sh
+```
+
+#### 6c. Optional: DPO Stage
+
+DPO is an optional second stage applied **after** SFT. The recommended recipe is `SFT -> merge -> DPO -> merge`, so the DPO base model is the SFT-merged model. The DPO reference distribution is obtained by **disabling** the (new) LoRA adapters, which recovers the SFT model without loading a second copy. The same rank map drives LoRA placement, keeping the C/D/E comparison fair.
+
+```bash
+# Train a DPO LoRA on the SFT-merged model, then merge, for the full matrix.
+cd finetune && ./run_dpo.sh
+```
+
+Notes:
+- Always run SFT before DPO; DPO from scratch underperforms.
+- Apply DPO uniformly to all rank strategies (bucket/uniform/random) to keep the comparison fair.
+- A strong teacher rarely errs on easy tasks, so DPO negatives are scarce; raise `NUM_SAMPLES`/`TEMPERATURE` or use harder data to surface more preference pairs.
 
 ### 7. Evaluate
 
@@ -350,6 +396,7 @@ In the paper, the quality-coverage variant (`alpha_per_layer`) is the main SHAPE
   - SHAPE: `shapley_{strategy}_{dataset}_rate{XX}.json`
   - Baselines: `{method}_{dataset}_rate{XX}.json`
 - LoRA rank maps: `{dataset}_rate{XX}_{rank_strategy}.json`, where `rank_strategy` is `bucket`, `uniform`, or `random`
+- Distilled training data: `data/sft/{dataset}_distill.json` (SFT), `data/sft/{dataset}_dpo.json` (DPO preference pairs)
 
 ## Citation
 
