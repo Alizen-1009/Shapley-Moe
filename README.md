@@ -5,11 +5,12 @@
 This repository accompanies the IJCNN 2026 work:
 
 > **SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs**
+> [[arXiv:2606.09886]](https://arxiv.org/abs/2606.09886)
 
 Sparse MoE models activate only a few experts per token, but the full expert pool still has to stay in GPU memory for dynamic routing. SHAPE targets this memory wall by pruning redundant experts after pretraining, without changing router logic, retraining experts, or modifying the model architecture.
 
 <p align="center">
-  <img src="assets/shape_cover.png" alt="SHAPE cover illustration" width="92%">
+  <img src="assets/shape_overview.png" alt="Overview of SHAPE workflow" width="95%">
 </p>
 
 
@@ -35,7 +36,7 @@ SHAPE reframes pruning as a cooperative attribution problem:
 6. Export a compact MoE model for serving.
 
 <p align="center">
-  <img src="assets/shape_overview.png" alt="Overview of SHAPE workflow" width="95%">
+  <img src="assets/shape_cover.png" alt="SHAPE cover illustration" width="92%">
 </p>
 
 ## Method Overview
@@ -407,7 +408,10 @@ If you use this repository, please cite:
   title     = {SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs},
   author    = {Zhang, Yuhao and Jiang, HongXu and Zhang, YiXiang and Zhang, Zheng},
   booktitle = {Proceedings of the International Joint Conference on Neural Networks},
-  year      = {2026}
+  year      = {2026},
+  eprint    = {2606.09886},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.LG}
 }
 ```
 
