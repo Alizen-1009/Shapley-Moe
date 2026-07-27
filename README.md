@@ -1,434 +1,296 @@
 # SHAPE: Coalition-Aware Expert Pruning for Sparse MoE LLMs
 
-**SHAPE** (**SH**apley-**A**ware **P**runing of **E**xperts) is a training-free pruning framework for sparse Mixture-of-Experts (MoE) large language models. It reduces the number of resident experts needed at inference time while preserving the cooperative routing structure that makes MoE models effective.
+**SHAPE** (**SH**apley-**A**ware **P**runing of **E**xperts) is a training-free framework for pruning experts from sparse Mixture-of-Experts (MoE) language models. It estimates each expert's value inside the routed expert coalitions observed on a small calibration set, then preserves the most useful experts at a target keep rate.
 
-This repository accompanies the IJCNN 2026 work:
+This repository accompanies the IJCNN 2026 paper:
 
 > **SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs**
-> [[arXiv:2606.09886]](https://arxiv.org/abs/2606.09886)
-
-Sparse MoE models activate only a few experts per token, but the full expert pool still has to stay in GPU memory for dynamic routing. SHAPE targets this memory wall by pruning redundant experts after pretraining, without changing router logic, retraining experts, or modifying the model architecture.
-
-<p align="center">
-  <img src="assets/shape_overview.png" alt="Overview of SHAPE workflow" width="95%">
-</p>
-
-
-## Highlights
-
-- **Coalition-aware expert valuation.** SHAPE treats routed top-k experts as a coalition instead of scoring each expert independently.
-- **Training-free pruning.** It uses only a small calibration set and routing traces from the original model.
-- **Layer-aware quality coverage.** It keeps the smallest expert subset that preserves enough Shapley contribution mass per layer, then uses bisection to match a target global keep rate.
-- **Modern MoE backbones.** The experiments cover Qwen3-30B-A3B, GPT-OSS-20B, and DeepSeek-V2-Lite.
-- **Practical memory savings.** Removing 20% or 40% of experts reduces peak VRAM while keeping task performance stable across reasoning, coding, QA, and NLP benchmarks.
-
-## What SHAPE Does
-
-Most expert pruning methods score experts in isolation, using signals such as routing frequency, router probability, or activation magnitude. That misses a key property of sparse MoE inference: each token is processed by a **coalition** of routed experts. An expert can be valuable not because it appears often, but because it completes a high-utility expert group.
-
-SHAPE reframes pruning as a cooperative attribution problem:
-
-1. Run the unpruned model on a small task-specific calibration set.
-2. Record top-k expert combinations at every MoE layer.
-3. Build an empirical cooperative game from observed expert coalitions.
-4. Estimate Shapley-style contribution scores for experts inside each layer.
-5. Select experts with a quality-coverage rule that preserves layer-wise contribution mass.
-6. Export a compact MoE model for serving.
+>
+> [Paper](https://arxiv.org/abs/2606.09886) · [Precomputed activations](https://github.com/Alizen-1009/Shapley-Moe/releases/tag/activation-data-v1) · [Detailed project structure](PROJECT_STRUCTURE.md)
 
 <p align="center">
-  <img src="assets/shape_cover.png" alt="SHAPE cover illustration" width="92%">
+  <img src="assets/shape_overview.png" alt="SHAPE workflow: collect routed expert coalitions, estimate contributions, and select experts" width="95%">
 </p>
 
-## Method Overview
+## Why SHAPE?
 
-Given a pretrained sparse MoE model and a downstream task, SHAPE performs an offline calibration pass. For every calibration token, it records which experts are co-activated by the router in each MoE layer. These traces define the observed coalition support for that task.
+Sparse MoE models activate only a few experts per token, but the entire expert pool must normally remain resident in memory. Existing pruning methods often score experts independently using routing frequency, router probability, or activation magnitude. SHAPE instead models the top-k experts selected for each token as a **coalition**.
 
-For each expert, SHAPE estimates how much marginal value it contributes inside the coalitions where it appears. The approximation uses routing frequency and co-occurrence statistics, avoiding expensive repeated forward passes over many masked expert subsets.
+- **Coalition-aware:** values experts by their marginal contribution to observed routed groups.
+- **Training-free:** requires a calibration pass, not gradient updates or expert retraining.
+- **Layer-aware:** preserves Shapley contribution mass per layer while matching a global keep rate.
+- **Architecture-preserving:** keeps the pretrained router and MoE structure unchanged.
+- **Configurable:** supports SHAPE and five pruning baselines across three MoE families.
 
-After scoring, SHAPE applies **Shapley Quality Coverage**. Instead of keeping a fixed number of experts in every layer, it keeps the smallest prefix of high-value experts whose cumulative contribution reaches an alpha fraction of that layer's Shapley mass. The alpha threshold is chosen by bisection so the final retained expert count matches the target keep rate.
+## Results
 
+The reported experiments use 25 calibration examples per task and evaluate seven tasks: GSM8K, HumanEval, GPQA-Diamond, MATH-500, TruthfulQA, OntoNotes5, and MedMCQA.
 
+A keep rate of `0.8` retains 80% of experts (20% pruning); `0.6` retains 60% (40% pruning).
 
-## Results at a Glance
-
-SHAPE is evaluated on three sparse MoE backbones and seven benchmarks: GSM8K, HumanEval, GPQA-Diamond, MATH-500, TruthfulQA, OntoNotes5, and MedMCQA. Each task uses 25 calibration examples to collect routing traces.
-
-### Accuracy Under Expert Pruning
-
-The table below reports task-average accuracy from the IJCNN 2026 experiments. A keep rate of `0.80` means 20% of experts are pruned; a keep rate of `0.60` means 40% of experts are pruned.
-
-| Model | Baseline | 20% Pruned | 40% Pruned |
+| Model | Unpruned | Keep 80% | Keep 60% |
 | --- | ---: | ---: | ---: |
 | Qwen3-30B-A3B | 82.92 | 82.43 | 81.31 |
 | GPT-OSS-20B | 82.12 | 82.44 | 79.02 |
 | DeepSeek-V2-Lite | 62.08 | 62.44 | 58.81 |
 
-At 20% pruning, average performance remains comparable to the unpruned models and can slightly improve on some backbones, suggesting that part of the expert pool has limited marginal utility for the evaluated tasks. At 40% pruning, degradation increases but remains bounded, especially on larger MoE backbones.
-
-### Baseline Comparison on Qwen3-30B-A3B
-
-SHAPE is strongest under aggressive pruning, where preserving critical expert coalitions matters most.
-
-| Rate | Method | GSM8K | HumanEval | GPQA-D | MATH-500 | TruthfulQA | OntoNotes5 | MedMCQA | Avg |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| - | Unpruned | 96.21 | 95.73 | 58.59 | 96.80 | 77.60 | 87.15 | 68.35 | 82.92 |
-| 20% | Random | 61.24 | 58.36 | 21.42 | 60.27 | 42.31 | 71.16 | 38.18 | 50.42 |
-| 20% | Frequency | 86.12 | 86.37 | 40.12 | 88.14 | 64.05 | 82.17 | 58.12 | 72.16 |
-| 20% | Gating | 87.42 | 87.15 | 42.18 | 89.36 | 65.41 | 83.24 | 59.27 | 73.43 |
-| 20% | RAEP | 95.47 | 94.52 | 57.56 | 95.42 | 76.42 | 86.14 | 67.51 | 81.86 |
-| 20% | EASY-EP | 95.82 | 95.01 | 58.12 | 95.86 | 77.14 | 86.54 | 67.96 | 82.35 |
-| 20% | **SHAPE** | **96.74** | **95.12** | **60.10** | **96.80** | 75.64 | 84.42 | **68.18** | **82.43** |
-| 40% | Random | 35.43 | 28.27 | 8.28 | 32.15 | 21.29 | 60.41 | 15.46 | 28.76 |
-| 40% | Frequency | 75.14 | 72.11 | 20.16 | 72.29 | 45.18 | 76.28 | 40.17 | 57.33 |
-| 40% | Gating | 77.19 | 74.32 | 22.54 | 74.28 | 47.21 | 77.31 | 42.15 | 59.29 |
-| 40% | RAEP | 93.42 | 90.47 | 52.42 | 92.58 | 43.12 | 83.15 | 64.41 | 74.22 |
-| 40% | EASY-EP | 94.12 | **91.07** | 53.12 | 93.14 | **73.28** | **83.51** | 65.14 | 79.05 |
-| 40% | **SHAPE** | **95.60** | 89.63 | **67.68** | **94.40** | 73.16 | 82.37 | **66.32** | **81.31** |
-
-### Peak VRAM
-
-Pruning directly reduces the resident expert footprint. The measured peak VRAM decreases steadily under 20% and 40% expert pruning for both 32K and 8K context settings, with no additional training or architecture changes.
+On Qwen3-30B-A3B, SHAPE retains an average score of **81.31** at a 60% keep rate, compared with 79.05 for EASY-EP and 74.22 for the REAP/RAEP-style baseline. See the [paper](https://arxiv.org/abs/2606.09886) for per-task results, ablations, and full baseline comparisons.
 
 <p align="center">
-  <img src="assets/shape_memory_vram.png" alt="Peak VRAM under 0, 20, and 40 percent expert pruning" width="78%">
+  <img src="assets/shape_memory_vram.png" alt="Peak VRAM at full size and at 20 and 40 percent expert pruning" width="72%">
 </p>
 
-## Repository Structure
+## Installation
 
-```text
-shapley-moe/
-|-- data/                         # Calibration data, distillation, download scripts
-|   |-- calibration/              # 25-example calibration sets (for Shapley)
-|   |-- sft/                      # Distilled SFT/DPO training data (generated)
-|   |-- download_dataset.py
-|   |-- run_download.sh
-|   |-- distill_sft.py            # Teacher distillation + RFT (SFT and DPO data)
-|   `-- download_sft.sh           # Distillation pipeline entry
-|-- analysis/                     # Routing trace collection and Shapley scoring
-|   |-- collect_activations.py
-|   |-- calc_shapley.py
-|   |-- run_collect.sh
-|   `-- run_calc_shapley.sh
-|-- pruning/                      # Expert selection and pruned-model export
-|   |-- methods/
-|   |   |-- select_by_shapley.py
-|   |   |-- select_by_easyep.py
-|   |   |-- select_by_reap.py
-|   |   |-- select_by_gating.py
-|   |   |-- select_by_frequency.py
-|   |   `-- select_by_random.py
-|   |-- save_model.py
-|   |-- run_select.sh
-|   `-- run_prune.sh
-|-- finetune/                     # Post-pruning adaptive LoRA fine-tuning
-|   |-- build_rank_map.py         # Shapley-guided per-expert LoRA ranks
-|   |-- train_adaptive_lora.py    # SFT stage (adaptive LoRA)
-|   |-- train_dpo_lora.py         # Optional DPO stage (reference = adapters off)
-|   |-- packed_qwen3_lora.py      # Packed-expert LoRA implementation for Qwen3
-|   |-- merge_lora.py
-|   |-- infer_adaptive_lora.py
-|   |-- run_experiments.sh        # SFT matrix: {rate} x {bucket,uniform,random}
-|   `-- run_dpo.sh                # DPO matrix orchestration
-|-- evaluation/                   # vLLM serving and EvalScope evaluation
-|-- configs/                      # Model paths and experiment settings
-|-- results/                      # Activations, Shapley values, selected experts
-|-- assets/                       # README figures
-`-- PROJECT_STRUCTURE.md
+### Requirements
+
+- Python 3.12 (the provided environment was captured with Python 3.12)
+- Linux and a CUDA-capable GPU for model loading, activation collection, export, and evaluation
+- Local Hugging Face checkpoints for the models you want to prune
+
+Create an environment and install the dependencies:
+
+```bash
+git clone git@github.com:Alizen-1009/Shapley-Moe.git
+cd Shapley-Moe
+
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
+
+`torch` and `vllm` wheels are CUDA-specific. If the pinned versions do not match your CUDA installation, install compatible wheels first and then install the remaining dependencies. Use `requirements-lock.txt` when you need the exact captured environment rather than the curated dependency list.
 
 ## Quick Start
 
-### 0. Configure Models and Experiments
+### Option A: Reproduce selection from published activations
 
-Edit the config files before running the pipeline:
-
-```bash
-vim configs/models.yaml
-vim configs/experiments.yaml
-```
-
-`configs/models.yaml` defines model paths, expert counts, top-k routing size, and MoE module patterns. `configs/experiments.yaml` defines calibration datasets, keep rates, pruning methods, and evaluation defaults.
-
-### 1. Prepare Calibration Data
+This path skips model inference and downloads the activation snapshot used by the repository. The archive is approximately 34 MB compressed and 228 MB extracted.
 
 ```bash
-cd data
-
-# Download one dataset with 25 examples.
-./run_download.sh gsm8k 25
-
-# Or download all datasets from configs/experiments.yaml.
-./run_download.sh --all
-```
-
-### 2. Collect Routing and Activation Statistics
-
-This single pass collects the information needed by SHAPE and the baseline pruning methods.
-
-```bash
-cd analysis
-
-# Use a configured model name.
-./run_collect.sh -m qwen3-30b-a3b --all
-
-# Or use a full model path.
-./run_collect.sh -m /path/to/model --data ../data/calibration/gsm8k_25.json
-
-# Inspect configured models.
-./run_collect.sh --list-models
-```
-
-Outputs are written to:
-
-```text
-results/{model_name}/activations/
-```
-
-Activation statistics are generated artifacts and are not stored in Git. To
-reproduce the published results without collecting them again, download the
-precomputed snapshot (~34 MB compressed, ~228 MB extracted):
-
-```bash
+# Download and checksum-verify results/*/activations/.
 ./data/download_activations.sh
+
+# Recompute Shapley values for one model and dataset.
+./analysis/run_calc_shapley.sh \
+  --model qwen3-30b-a3b \
+  --dataset gsm8k_25
+
+# Select experts at an 80% keep rate.
+./pruning/run_select.sh \
+  --model qwen3-30b-a3b \
+  --dataset gsm8k_25 \
+  --method shapley \
+  --rate 0.8
 ```
 
-The script verifies the archive checksum and restores the files under
-`results/{model_name}/activations/`.
+The downloaded activations are ignored by Git. Compact derived artifacts such as Shapley CSV files and selected-expert JSON files remain versioned in `results/`.
 
-### 3. Compute Shapley Values
+### Option B: Run the full pipeline
+
+#### 1. Configure model paths
+
+Edit [`configs/models.yaml`](configs/models.yaml) so each model points to a local checkpoint. Experiment defaults, datasets, methods, and keep rates are defined in [`configs/experiments.yaml`](configs/experiments.yaml).
+
+```yaml
+models:
+  qwen3-30b-a3b:
+    path: /path/to/Qwen3-30B-A3B
+    num_experts: 128
+    num_experts_per_tok: 8
+    type: qwen3
+```
+
+#### 2. Prepare calibration data
+
+The repository already includes the 25-example calibration sets used in the experiments. To regenerate one dataset or all configured datasets:
 
 ```bash
-cd analysis
-
-# Compute Shapley scores for all available activation files.
-./run_calc_shapley.sh -m qwen3-30b-a3b
-
-# Or compute one dataset.
-./run_calc_shapley.sh -m qwen3-30b-a3b -d gsm8k_25
+./data/run_download.sh gsm8k 25
+./data/run_download.sh --all
 ```
 
-Outputs are written to:
-
-```text
-results/{model_name}/shapley_values/
-```
-
-### 4. Select Experts
+#### 3. Collect routing and activation statistics
 
 ```bash
-cd pruning
+# Run every calibration dataset for a configured model.
+./analysis/run_collect.sh --model qwen3-30b-a3b --all
 
-# SHAPE selection with 80% keep rate, i.e. 20% expert pruning.
-./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley -r 0.8
-
-# Run all configured keep rates.
-./run_select.sh -m qwen3-30b-a3b -d gsm8k_25 -M shapley --all-rates
-
-# Run all datasets and all configured methods.
-./run_select.sh -m qwen3-30b-a3b --all-datasets --all-methods --all-rates
+# Or use an explicit checkpoint and one calibration file.
+./analysis/run_collect.sh \
+  --model /path/to/model \
+  --data data/calibration/gsm8k_25.json
 ```
 
-Selected expert files are written to:
+Output: `results/{model}/activations/`
 
-```text
-results/{model_name}/selected_experts/
-```
-
-### 5. Export a Pruned Model
+#### 4. Compute Shapley values
 
 ```bash
-cd pruning
+# One dataset.
+./analysis/run_calc_shapley.sh \
+  --model qwen3-30b-a3b \
+  --dataset gsm8k_25
 
-# Export a SHAPE-pruned model from the selected experts.
-./run_prune.sh -m qwen3-30b-a3b -d gsm8k_25 -r 0.8
-
-# Use another method or keep rate.
-./run_prune.sh -m gpt-oss-20b -d arc_easy_25 -M easyep -r 0.6
+# Every available activation file for the model.
+./analysis/run_calc_shapley.sh --model qwen3-30b-a3b --all
 ```
 
-The pruning script finds the matching selected-expert JSON and writes a pruned Hugging Face model directory.
+Output: `results/{model}/shapley_values/`
 
-### 6. Optional: Adaptive LoRA Fine-Tuning
-
-The `finetune/` scripts implement a post-pruning LoRA recovery path. The current minimal experimental loop targets Qwen3-30B-A3B on `gsm8k_25` with SHAPE-selected experts. The goal is to *recover* the capability lost by pruning, measured as a recovery rate against the unpruned model.
-
-#### 6a. Distill Training Data
-
-The 25-example calibration sets are for Shapley estimation, **not** for training. Training data is distilled from the **original (unpruned) teacher model**: it answers the full training split, and rejection sampling (RFT) keeps only completions whose final answer matches the gold answer. Using the original model (rather than a stronger external model) keeps the recovery-rate narrative clean and the data distribution aligned with the student.
+#### 5. Select experts
 
 ```bash
-cd data
+# Recommended SHAPE strategy.
+./pruning/run_select.sh \
+  --model qwen3-30b-a3b \
+  --dataset gsm8k_25 \
+  --method shapley \
+  --strategy alpha_per_layer \
+  --rate 0.8
 
-# Download the full train-split question pool, then distill via vLLM with RFT.
-# Produces data/sft/gsm8k_distill.json (SFT) and data/sft/gsm8k_dpo.json (DPO).
-TEACHER_MODEL=/path/to/original_qwen3 TP=8 NUM_SAMPLES=4 ./download_sft.sh gsm8k
-
-# Quick smoke test on 50 questions.
-MAX_QUESTIONS=50 ./download_sft.sh gsm8k
+# Run every configured dataset, method, and keep rate.
+./pruning/run_select.sh \
+  --model qwen3-30b-a3b \
+  --all-datasets \
+  --all-methods \
+  --all-rates
 ```
 
-A single sampling pass yields both datasets: correct completions become SFT targets; correct-vs-incorrect completions for the same prompt become DPO preference pairs.
+Output: `results/{model}/selected_experts/`
 
-#### 6b. Build Rank Map, Train (SFT), Merge
-
-Build a LoRA rank map from Shapley scores and selected experts:
+#### 6. Export a pruned model
 
 ```bash
-python finetune/build_rank_map.py \
-  --shapley_csv results/qwen3-30b-a3b/shapley_values/gsm8k_25_shapley.csv \
-  --selected_experts results/qwen3-30b-a3b/selected_experts/shapley_alpha_per_layer_gsm8k_25_rate0_8.json \
-  --output results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json \
-  --strategy bucket
+./pruning/run_prune.sh \
+  --model qwen3-30b-a3b \
+  --dataset gsm8k_25 \
+  --method shapley \
+  --strategy alpha_per_layer \
+  --rate 0.8
 ```
 
-Default adaptive rank allocation is layer-wise and only over retained experts:
+Use `./pruning/run_prune.sh --help` to choose an output directory, device map, or pruning implementation (`zero_weights`, `gate_bias`, or `both`).
 
-```text
-Top 20% retained experts -> rank 32
-Next 40% retained experts -> rank 16
-Last 40% retained experts -> rank 8
-```
-
-The matched baselines are:
-
-```text
-uniform: all retained experts use rank 16
-random: same bucket sizes and rank set as bucket, assigned randomly
-```
-
-Rank maps omit pruned experts. During LoRA training, `train_adaptive_lora.py` expands the rank map into full expert module paths and passes only those modules to PEFT, so zeroed/pruned experts do not receive LoRA parameters.
-
-Train an adapter on a pruned model using the distilled SFT data:
+#### 7. Serve and evaluate
 
 ```bash
-python finetune/train_adaptive_lora.py \
-  --model_path /path/to/pruned_qwen3_model \
-  --rank_map results/qwen3-30b-a3b/lora_rank_maps/gsm8k_25_rate0_8_bucket.json \
-  --train_file data/sft/gsm8k_distill.json \
-  --output_dir adapters/qwen3_gsm8k_rate0_8_bucket \
-  --model_type qwen3 \
-  --bf16
+# Start a vLLM server for an exported model selected by its experiment metadata.
+bash evaluation/vllm-server.sh \
+  --model qwen3-30b-a3b \
+  --method shapley \
+  --dataset gsm8k_25 \
+  --rate 0.8 \
+  --port 8801 \
+  --tp 8
+
+# In another shell, run the configured EvalScope evaluation.
+python evaluation/run_evalscope.py
 ```
 
-Merge the adapter before serving or formal evaluation:
+Run any wrapper with `--help` to see all options and defaults.
 
-```bash
-python finetune/merge_lora.py \
-  --base_model /path/to/pruned_qwen3_model \
-  --adapter adapters/qwen3_gsm8k_rate0_8_bucket \
-  --output /path/to/merged_qwen3_gsm8k_rate0_8_bucket
-```
+## Pipeline Artifacts
 
-The whole `{rate} x {bucket, uniform, random}` matrix (rank map -> train -> merge) can be run in one command:
+| Stage | Input | Output |
+| --- | --- | --- |
+| Calibration | Dataset samples | `data/calibration/{dataset}_25.json` |
+| Collection | Model + calibration data | `results/{model}/activations/*.json` |
+| Scoring | Activation statistics | `results/{model}/shapley_values/*.csv` |
+| Selection | Scores + keep rate | `results/{model}/selected_experts/*.json` |
+| Export | Model + selected experts | Pruned model directory |
+| Evaluation | Served model | EvalScope results |
 
-```bash
-cd finetune && ./run_experiments.sh
-```
+Activation statistics, distilled training data, adapters, and exported models are generated artifacts and are excluded from Git.
 
-#### 6c. Optional: DPO Stage
+## Supported Models
 
-DPO is an optional second stage applied **after** SFT. The recommended recipe is `SFT -> merge -> DPO -> merge`, so the DPO base model is the SFT-merged model. The DPO reference distribution is obtained by **disabling** the (new) LoRA adapters, which recovers the SFT model without loading a second copy. The same rank map drives LoRA placement, keeping the C/D/E comparison fair.
-
-```bash
-# Train a DPO LoRA on the SFT-merged model, then merge, for the full matrix.
-cd finetune && ./run_dpo.sh
-```
-
-Notes:
-- Always run SFT before DPO; DPO from scratch underperforms.
-- Apply DPO uniformly to all rank strategies (bucket/uniform/random) to keep the comparison fair.
-- A strong teacher rarely errs on easy tasks, so DPO negatives are scarce; raise `NUM_SAMPLES`/`TEMPERATURE` or use harder data to surface more preference pairs.
-
-### 7. Evaluate
-
-```bash
-cd evaluation
-
-# Start a vLLM server from a configured model.
-./vllm-server.sh qwen3-30b-a3b
-
-# Or use a full model path and custom port.
-./vllm-server.sh /path/to/model -p 8801
-
-# Run EvalScope evaluation using configs/experiments.yaml.
-python run_evalscope.py
-```
-
-## Supported Models and Datasets
-
-### Models
-
-| Model name | Experts | Experts per token | Type |
+| Config name | Experts | Experts per token | Family |
 | --- | ---: | ---: | --- |
 | `qwen3-30b-a3b` | 128 | 8 | Qwen3 MoE |
 | `gpt-oss-20b` | 32 | 4 | GPT-OSS MoE |
 | `deepseekv2-lite-coder` | 64 | 6 | DeepSeek-V2 MoE |
 
-### Calibration and Evaluation Tasks
+The configured calibration datasets cover code, mathematics, reasoning, medical QA, NLP, and truthfulness. See [`configs/experiments.yaml`](configs/experiments.yaml) for the authoritative list.
 
-The default config includes calibration sets for code, math, reasoning, medical QA, NLP, and truthfulness:
+## Methods and Selection Strategies
 
-```text
-humaneval_25, gsm8k_25, math_500_25, arc_easy_25, logiqa_25,
-gpqa_diamond_25, med_mcqa_25, pubmedqa_25, biomix_qa_25,
-ontonotes5_25, truthful_qa_25
+### Pruning methods
+
+| Method | Signal |
+| --- | --- |
+| `shapley` | Coalition-aware Shapley-style contribution (SHAPE) |
+| `easyep` | Task-aligned expert selection |
+| `reap` | Weighted activation norm |
+| `gating` | Mean router softmax score |
+| `frequency` | Expert activation count |
+| `random` | Uniform random selection |
+
+### SHAPE strategies
+
+| Strategy | Behavior |
+| --- | --- |
+| `alpha_per_layer` | Preserves an alpha fraction of Shapley mass per layer; recommended |
+| `alpha_global` | Applies contribution coverage globally |
+| `topk_per_layer` | Keeps a fixed number of experts in every layer |
+| `topk_global` | Keeps the globally highest-scoring experts |
+
+## Optional: Adaptive LoRA Recovery
+
+The `finetune/` pipeline allocates different LoRA ranks to retained experts according to their Shapley contribution. It supports distilled SFT, an optional DPO stage, matched uniform/random rank baselines, and adapter merging.
+
+Typical entry points:
+
+```bash
+# Distill SFT and DPO data from the original teacher model.
+TEACHER_MODEL=/path/to/original-model TP=8 NUM_SAMPLES=4 \
+  ./data/download_sft.sh gsm8k
+
+# Run the configured {keep rate} x {rank strategy} SFT matrix.
+./finetune/run_experiments.sh
+
+# Optionally run DPO after SFT.
+./finetune/run_dpo.sh
 ```
 
-The IJCNN 2026 main results report GSM8K, HumanEval, GPQA-Diamond, MATH-500, TruthfulQA, OntoNotes5, and MedMCQA.
+See [`finetune/PLAN.md`](finetune/PLAN.md) and [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) for rank-map generation, individual training commands, merging, and experimental details.
 
-## Pruning Methods
+## Repository Layout
 
-| Method | Signal | Description |
-| --- | --- | --- |
-| `shapley` | Coalition-aware Shapley-style contribution | Primary SHAPE method |
-| `easyep` | Task-aligned expert selection | EASY-EP baseline |
-| `reap` | Weighted activation norm | REAP/RAEP-style baseline |
-| `gating` | Mean router softmax score | Router-score baseline |
-| `frequency` | Activation count | Routing-frequency baseline |
-| `random` | Uniform random selection | Lower-bound baseline |
+```text
+Shapley-Moe/
+├── configs/       # Model paths and experiment definitions
+├── data/          # Calibration data and data download/distillation scripts
+├── analysis/      # Activation collection and Shapley scoring
+├── pruning/       # Expert selection methods and model export
+├── evaluation/    # vLLM serving and EvalScope evaluation
+├── finetune/      # Optional adaptive-LoRA recovery pipeline
+├── results/       # Compact scores, selections, rank maps, and reports
+└── assets/        # README figures
+```
 
-## SHAPE Selection Strategies
+For a file-by-file map, see [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
 
-| Strategy | Description | Notes |
-| --- | --- | --- |
-| `alpha_per_layer` | Preserve an alpha fraction of Shapley mass in each layer | Recommended; used for SHAPE quality coverage |
-| `alpha_global` | Preserve alpha coverage globally | Can over-prune some layers |
-| `topk_per_layer` | Keep a fixed top-k expert count in every layer | Simple layer-wise baseline |
-| `topk_global` | Keep the globally highest-scoring experts | Can cause layer imbalance |
+## Conventions
 
-In the paper, the quality-coverage variant (`alpha_per_layer`) is the main SHAPE setting. It outperforms simplified global and rigid layer-wise variants because it preserves cooperative value while avoiding layer collapse.
-
-## Naming Conventions
-
-- Models: `qwen3-30b-a3b`, `gpt-oss-20b`, `deepseekv2-lite-coder`
-- Datasets: `{dataset}_{samples}`, for example `gsm8k_25`
-- Methods: `shapley`, `easyep`, `reap`, `gating`, `frequency`, `random`
-- Keep rates: `0.8` keeps 80% of experts and prunes 20%; `0.6` keeps 60% and prunes 40%
-- Selected expert files:
-  - SHAPE: `shapley_{strategy}_{dataset}_rate{XX}.json`
-  - Baselines: `{method}_{dataset}_rate{XX}.json`
-- LoRA rank maps: `{dataset}_rate{XX}_{rank_strategy}.json`, where `rank_strategy` is `bucket`, `uniform`, or `random`
-- Distilled training data: `data/sft/{dataset}_distill.json` (SFT), `data/sft/{dataset}_dpo.json` (DPO preference pairs)
+- `--rate` is a **keep rate**, not a removal rate: `0.8` keeps 80% and prunes 20%.
+- Dataset names include the calibration size, for example `gsm8k_25`.
+- The recommended SHAPE selection strategy is `alpha_per_layer`.
+- The default calibration size is 25 examples per task.
+- Activation collection requires the original unpruned model; scoring and selection can use the published activation snapshot.
 
 ## Citation
 
-If you use this repository, please cite:
+If you use SHAPE, please cite:
 
 ```bibtex
 @inproceedings{zhang2026shape,
-  title     = {SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs},
-  author    = {Zhang, Yuhao and Jiang, HongXu and Zhang, YiXiang and Zhang, Zheng},
-  booktitle = {Proceedings of the International Joint Conference on Neural Networks},
-  year      = {2026},
-  eprint    = {2606.09886},
+  title         = {SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs},
+  author        = {Zhang, Yuhao and Jiang, HongXu and Zhang, YiXiang and Zhang, Zheng},
+  booktitle     = {Proceedings of the International Joint Conference on Neural Networks},
+  year          = {2026},
+  eprint        = {2606.09886},
   archivePrefix = {arXiv},
-  primaryClass = {cs.LG}
+  primaryClass  = {cs.LG}
 }
 ```
-
-## Notes
-
-- SHAPE is post-training and does not require gradient updates.
-- The default calibration size in this repository is 25 examples per task.
-- The `-r` argument in scripts is a **keep rate**, not a removal rate.
-- Large models require local Hugging Face checkpoints and sufficient GPU memory for the unpruned calibration pass.
