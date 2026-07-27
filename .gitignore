@@ -7,6 +7,10 @@ __pycache__/
 # Generated distillation / SFT data (regenerable via data/download_sft.sh)
 data/sft/
 
+# Generated activation statistics. Download the published snapshot with
+# data/download_activations.sh or regenerate it with analysis/run_collect.sh.
+results/*/activations/
+
 # Training artifacts (LoRA adapters, merged models, misc outputs) - too large for git
 adapters/
 outputs/

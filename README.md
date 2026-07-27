@@ -184,6 +184,17 @@ Outputs are written to:
 results/{model_name}/activations/
 ```
 
+Activation statistics are generated artifacts and are not stored in Git. To
+reproduce the published results without collecting them again, download the
+precomputed snapshot (~34 MB compressed, ~228 MB extracted):
+
+```bash
+./data/download_activations.sh
+```
+
+The script verifies the archive checksum and restores the files under
+`results/{model_name}/activations/`.
+
 ### 3. Compute Shapley Values
 
 ```bash

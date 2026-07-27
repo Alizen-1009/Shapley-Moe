@@ -45,7 +45,7 @@ shapley-moe/
 │
 ├── results/                            # All results (organized by model)
 │   ├── {model_name}/                   # e.g. qwen3-30b-a3b/
-│   │   ├── activations/                # Activation statistics
+│   │   ├── activations/                # Generated/downloaded; excluded from Git
 │   │   │   ├── {dataset}_shapley.json      # For Shapley
 │   │   │   ├── {dataset}_gating.json       # For Gating Score
 │   │   │   ├── {dataset}_easyep.json       # For EASYEP
