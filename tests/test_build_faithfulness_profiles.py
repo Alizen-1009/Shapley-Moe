@@ -35,6 +35,7 @@ class BuildFaithfulnessProfilesTest(unittest.TestCase):
                 shapley_csv=scores_path,
                 reference_selection=selection_path,
                 model="test-model",
+                model_revision="test-revision",
                 dataset="test-data",
                 random_seeds=[42, 43],
             )
@@ -43,6 +44,9 @@ class BuildFaithfulnessProfilesTest(unittest.TestCase):
             self.assertEqual(profiles["remove_high"]["pruned_experts"], [[0, 3], [0, 4], [1, 3], [1, 4]])
 
             for name, profile in profiles.items():
+                self.assertEqual(profile["version"], 2, name)
+                self.assertEqual(profile["routing_mode"], "post_topk_drop", name)
+                self.assertEqual(profile["model_revision"], "test-revision", name)
                 self.assertEqual(profile["metadata"]["selected_experts"], 6, name)
                 self.assertEqual(profile["metadata"]["pruned_experts"], 4, name)
                 self.assertEqual(profile["metadata"]["per_layer_kept"], {"0": 3, "1": 3}, name)
@@ -51,6 +55,7 @@ class BuildFaithfulnessProfilesTest(unittest.TestCase):
                 shapley_csv=scores_path,
                 reference_selection=selection_path,
                 model="test-model",
+                model_revision="test-revision",
                 dataset="test-data",
                 random_seeds=[42],
             )["random_seed42"])
@@ -76,6 +81,7 @@ class BuildFaithfulnessProfilesTest(unittest.TestCase):
                     shapley_csv=scores_path,
                     reference_selection=selection_path,
                     model="test-model",
+                    model_revision="test-revision",
                     dataset="test-data",
                     random_seeds=[],
                 )

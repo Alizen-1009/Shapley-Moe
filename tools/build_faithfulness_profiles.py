@@ -81,6 +81,7 @@ def _profile(
     selection: Mapping[int, Sequence[int]],
     all_experts: Mapping[int, Iterable[int]],
     model: str,
+    model_revision: str,
     dataset: str,
     variant: str,
     seed: Optional[int] = None,
@@ -107,8 +108,10 @@ def _profile(
     if seed is not None:
         metadata["seed"] = seed
     return {
-        "version": 1,
+        "version": 2,
+        "routing_mode": "post_topk_drop",
         "model": model,
+        "model_revision": model_revision,
         "dataset": dataset,
         "pruned_experts": pruned,
         "metadata": metadata,
@@ -120,6 +123,7 @@ def build_profiles(
     shapley_csv: Path,
     reference_selection: Path,
     model: str,
+    model_revision: str,
     dataset: str,
     random_seeds: Sequence[int],
 ) -> Dict[str, Dict[str, Any]]:
@@ -147,6 +151,7 @@ def build_profiles(
             selection=reference,
             all_experts=all_experts,
             model=model,
+            model_revision=model_revision,
             dataset=dataset,
             variant="remove_low",
         ),
@@ -154,6 +159,7 @@ def build_profiles(
             selection=remove_high,
             all_experts=all_experts,
             model=model,
+            model_revision=model_revision,
             dataset=dataset,
             variant="remove_high",
         ),
@@ -171,6 +177,7 @@ def build_profiles(
             selection=random_selection,
             all_experts=all_experts,
             model=model,
+            model_revision=model_revision,
             dataset=dataset,
             variant="random",
             seed=seed,
@@ -183,6 +190,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--shapley-csv", type=Path, required=True)
     parser.add_argument("--reference-selection", type=Path, required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--model-revision", required=True)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--random-seeds", type=int, nargs="*", default=[42, 43, 44])
@@ -195,6 +203,7 @@ def main() -> None:
         shapley_csv=args.shapley_csv,
         reference_selection=args.reference_selection,
         model=args.model,
+        model_revision=args.model_revision,
         dataset=args.dataset,
         random_seeds=args.random_seeds,
     )
