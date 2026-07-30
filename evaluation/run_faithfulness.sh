@@ -39,7 +39,14 @@ MODEL=${MODEL_PATH:-/root/workspace/chuanwu/models/Qwen3-30B-A3B-Instruct-2507}
 VLLM_PY=${VLLM_PY:-/root/workspace/chuanwu/venvs/shape-vllm/bin}
 EVAL_PY=${EVAL_PY:-/root/workspace/chuanwu/venvs/shape-eval/bin}
 PROFILE_DIR="$ROOT/results/qwen3-30b-a3b/faithfulness_profiles/$DATASET"
-OUT_ROOT="$ROOT/results/qwen3-30b-a3b/faithfulness_eval/$DATASET"
+OUT_BASE=${FAITHFULNESS_OUT_ROOT:-$ROOT/results/qwen3-30b-a3b/faithfulness_eval}
+OUT_ROOT="$OUT_BASE/$DATASET"
+MAX_TOKENS=${FAITHFULNESS_MAX_TOKENS:-20480}
+[[ "$MAX_TOKENS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "FAITHFULNESS_MAX_TOKENS must be a positive integer" >&2
+  exit 2
+}
+GENERATION_CONFIG=$(printf '{"max_tokens":%s,"temperature":0,"seed":0,"timeout":600}' "$MAX_TOKENS")
 MODEL_REVISION=0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe
 DEFAULT_VARIANTS=(dense remove_low random_seed42 random_seed43 random_seed44 remove_high)
 if [[ -n "${FAITHFULNESS_VARIANTS:-}" ]]; then
@@ -120,7 +127,7 @@ moe_backend=triton
 dtype=bfloat16
 tensor_parallel_size=1
 max_model_len=24576
-max_tokens=20480
+max_tokens=$MAX_TOKENS
 temperature=0
 seed=0
 eval_batch_size=128
@@ -150,7 +157,7 @@ EOF
     --api-key EMPTY \
     --eval-type openai_api \
     --datasets "$EVAL_DATASET" \
-    --generation-config '{"max_tokens":20480,"temperature":0,"seed":0,"timeout":600}' \
+    --generation-config "$GENERATION_CONFIG" \
     --eval-batch-size 128 \
     --seed 0 \
     --work-dir "$variant_dir/eval" \
