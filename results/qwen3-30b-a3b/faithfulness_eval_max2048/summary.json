@@ -1,0 +1,69 @@
+{
+  "experiment": "expert_faithfulness",
+  "status": "complete",
+  "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+  "model_revision": "0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe",
+  "riy_source_commit": "4986caaa5044cf023e4118f9cc15aa30bc2af9dd",
+  "shape_commit": "16164370186cab772d36c83bf86447a927e4869c",
+  "compiled_wheel_commit": "e222c33f2",
+  "evalscope_version": "1.9.1",
+  "backend": "triton",
+  "dtype": "bfloat16",
+  "tensor_parallel_size": 1,
+  "generation": {
+    "max_tokens": 2048,
+    "temperature": 0,
+    "seed": 0
+  },
+  "expected_reports": 18,
+  "actual_reports": 18,
+  "score_unit": "percent",
+  "random_std": "sample standard deviation across seeds 42, 43, 44",
+  "tasks": {
+    "gsm8k_25": {
+      "benchmark": "gsm8k",
+      "num_samples": 1319,
+      "dense": 95.68,
+      "remove_low": 96.13,
+      "random_seeds": {
+        "42": 68.01,
+        "43": 87.41,
+        "44": 84.15
+      },
+      "random_mean": 79.86,
+      "random_sample_std": 10.39,
+      "remove_high": 10.01,
+      "faithfulness_gap": 86.12
+    },
+    "humaneval_25": {
+      "benchmark": "humaneval",
+      "num_samples": 164,
+      "dense": 95.73,
+      "remove_low": 95.12,
+      "random_seeds": {
+        "42": 75.61,
+        "43": 76.83,
+        "44": 73.78
+      },
+      "random_mean": 75.41,
+      "random_sample_std": 1.54,
+      "remove_high": 0.0,
+      "faithfulness_gap": 95.12
+    },
+    "med_mcqa_25": {
+      "benchmark": "med_mcqa",
+      "num_samples": 4183,
+      "dense": 68.25,
+      "remove_low": 68.52,
+      "random_seeds": {
+        "42": 60.91,
+        "43": 58.19,
+        "44": 59.02
+      },
+      "random_mean": 59.37,
+      "random_sample_std": 1.39,
+      "remove_high": 30.55,
+      "faithfulness_gap": 37.97
+    }
+  }
+}
