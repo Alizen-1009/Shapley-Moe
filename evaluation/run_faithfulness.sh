@@ -41,7 +41,18 @@ EVAL_PY=${EVAL_PY:-/root/workspace/chuanwu/venvs/shape-eval/bin}
 PROFILE_DIR="$ROOT/results/qwen3-30b-a3b/faithfulness_profiles/$DATASET"
 OUT_ROOT="$ROOT/results/qwen3-30b-a3b/faithfulness_eval/$DATASET"
 MODEL_REVISION=0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe
-VARIANTS=(dense remove_low random_seed42 random_seed43 random_seed44 remove_high)
+DEFAULT_VARIANTS=(dense remove_low random_seed42 random_seed43 random_seed44 remove_high)
+if [[ -n "${FAITHFULNESS_VARIANTS:-}" ]]; then
+  read -r -a VARIANTS <<< "$FAITHFULNESS_VARIANTS"
+else
+  VARIANTS=("${DEFAULT_VARIANTS[@]}")
+fi
+for variant in "${VARIANTS[@]}"; do
+  case "$variant" in
+    dense|remove_low|random_seed42|random_seed43|random_seed44|remove_high) ;;
+    *) echo "Unsupported variant: $variant" >&2; exit 2 ;;
+  esac
+done
 SERVER_PID=
 
 mkdir -p "$OUT_ROOT"
