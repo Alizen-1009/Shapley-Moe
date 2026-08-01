@@ -11,6 +11,7 @@ VLLM_BIN=${VLLM_BIN:-/root/workspace/chuanwu/venvs/shape-vllm/bin}
 PROFILE_DIR="$ROOT/results/qwen3-30b-a3b/throughput_profiles"
 OUT_ROOT=${THROUGHPUT_OUT_ROOT:-$ROOT/results/qwen3-30b-a3b/throughput_eval/fixed_512in_128out_c128}
 NUM_PROMPTS=${THROUGHPUT_NUM_PROMPTS:-1000}
+WARMUP_PROMPTS=${THROUGHPUT_WARMUP_PROMPTS:-256}
 REPEATS=${THROUGHPUT_REPEATS:-3}
 MODEL_REVISION=0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe
 VARIANTS=(dense keep_0_8 keep_0_6)
@@ -107,6 +108,7 @@ tensor_parallel_size=1
 max_model_len=4096
 gpu_memory_utilization=0.8
 num_prompts=$NUM_PROMPTS
+warmup_prompts=$WARMUP_PROMPTS
 input_tokens=512
 output_tokens=128
 request_rate=inf
@@ -134,7 +136,7 @@ EOF
   wait_for_server "$server_log"
 
   echo "[$variant] warmup"
-  run_benchmark 64 41 "$variant_dir" warmup.json >"$variant_dir/warmup.log" 2>&1
+  run_benchmark "$WARMUP_PROMPTS" 41 "$variant_dir" warmup.json >"$variant_dir/warmup.log" 2>&1
   rm -f "$variant_dir/warmup.json"
 
   for repeat in $(seq 1 "$REPEATS"); do
