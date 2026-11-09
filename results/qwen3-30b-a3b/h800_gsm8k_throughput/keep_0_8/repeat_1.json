@@ -1,0 +1,24 @@
+{
+  "num_requests": 1319,
+  "successful_requests": 1319,
+  "failed_requests": 0,
+  "wall_seconds": 127.4564938256517,
+  "prompt_tokens": 112521,
+  "completion_tokens": 357300,
+  "output_tokens_per_second": 2803.3095001715033,
+  "requests_per_second": 10.348629249163764,
+  "mean_output_tokens": 270.88703563305535,
+  "max_output_tokens": 2048,
+  "length_capped_requests": 12,
+  "latency_p50_seconds": 8.460114561021328,
+  "latency_p95_seconds": 18.359770106244827,
+  "gpu_after": {
+    "index": "1",
+    "uuid": "GPU-13e1f305-ea69-0daf-ea9a-c40fee289704",
+    "name": "NVIDIA H800 PCIe",
+    "driver": "580.95.05",
+    "memory_total_mib": 81559,
+    "memory_used_mib": 69705,
+    "utilization_percent": 54
+  }
+}

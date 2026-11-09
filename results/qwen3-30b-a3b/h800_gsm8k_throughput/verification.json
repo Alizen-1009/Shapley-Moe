@@ -1,0 +1,8 @@
+{
+  "status": "verified",
+  "verified_full_passes": 9,
+  "verified_requests": 11871,
+  "same_per_question_prompt_lengths": true,
+  "all_metrics_recomputed_from_response_records": true,
+  "note": "Verifies accounting/config consistency, not answer accuracy or zero-weight-reference equivalence."
+}

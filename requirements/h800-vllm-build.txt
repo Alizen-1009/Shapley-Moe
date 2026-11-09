@@ -1,0 +1,13 @@
+# Build tooling used for the editable, precompiled custom-source installation.
+# Runtime dependencies are locked separately in h800-vllm.lock.txt.
+cmake==4.4.4
+ninja==1.13.2
+packaging==26.3
+setuptools==80.10.2
+setuptools-scm==10.3.4
+setuptools-rust==1.13.0
+semantic-version==2.10.0
+vcs-versioning==2.6.0
+wheel==0.48.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4

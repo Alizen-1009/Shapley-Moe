@@ -1,0 +1,43 @@
+{
+  "command": [
+    "/home/zhangyh/miniconda3/envs/shape-vllm/bin/vllm",
+    "serve",
+    "/home/zhangyh/model-dir",
+    "--served-model-name",
+    "shape-qwen3",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18801",
+    "--tensor-parallel-size",
+    "1",
+    "--dtype",
+    "bfloat16",
+    "--seed",
+    "42",
+    "--max-model-len",
+    "4096",
+    "--max-num-seqs",
+    "128",
+    "--max-num-batched-tokens",
+    "8192",
+    "--gpu-memory-utilization",
+    "0.85",
+    "--moe-backend",
+    "triton",
+    "--attention-backend",
+    "TRITON_ATTN",
+    "--no-enable-prefix-caching",
+    "--max-cudagraph-capture-size",
+    "128",
+    "--riy-expert-profile",
+    "/home/zhangyh/shape-experiments/shape/results/qwen3-30b-a3b/throughput_profiles/keep_0_8.json"
+  ],
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_USE_FLASHINFER_SAMPLER": "0",
+    "VLLM_RIY_MONITOR": "0"
+  }
+}

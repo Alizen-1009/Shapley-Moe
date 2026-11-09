@@ -1,0 +1,5 @@
+{
+  "routing_mode": "post_topk_drop",
+  "verified_layers": 48,
+  "kept_experts": 4911
+}

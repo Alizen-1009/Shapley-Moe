@@ -1,0 +1,109 @@
+{
+  "started_at": "2026-11-09T14:08:30+0800",
+  "arguments": {
+    "root": "/home/zhangyh/shape-experiments/shape",
+    "dataset": "/home/zhangyh/shape-experiments/datasets/gsm8k/test.jsonl",
+    "model": "/home/zhangyh/model-dir",
+    "output": "/home/zhangyh/shape-experiments/runs/gsm8k_c128_max2048_r3_graph_run2",
+    "gpu": 1,
+    "port": 18801,
+    "concurrency": 128,
+    "max_tokens": 2048,
+    "warmup": 256,
+    "repeats": 3,
+    "seed": 42,
+    "startup_timeout": 600,
+    "request_timeout": 600,
+    "variants": [
+      "dense",
+      "keep_0_8",
+      "keep_0_6"
+    ],
+    "limit": null,
+    "eager": false
+  },
+  "gpu": {
+    "index": "1",
+    "uuid": "GPU-13e1f305-ea69-0daf-ea9a-c40fee289704",
+    "name": "NVIDIA H800 PCIe",
+    "driver": "580.95.05",
+    "memory_total_mib": 81559,
+    "memory_used_mib": 0,
+    "utilization_percent": 0
+  },
+  "runner_sha256": "7105037683adde9c9a30bd9cf2afd2c2d5906f92be0ae21a580a5e816afde525",
+  "data_sha256": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14",
+  "data_commit": "3101c7d5072418e28b9008a6636bde82a006892c",
+  "dataset_split": "test",
+  "num_questions": 1319,
+  "question_order": "original file order",
+  "instruction": "Please reason step by step, and put your final numeric answer after '#### '.",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 2048,
+    "seed": 42,
+    "stream": false
+  },
+  "profiles": {
+    "keep_0_8": {
+      "sha256": "f73bec65d9acedea15ca67a684e5faf99aae41185c66f2885849995d8f37e5df",
+      "pruned_experts": 1233,
+      "actual_keep_rate": 0.79931640625
+    },
+    "keep_0_6": {
+      "sha256": "34749c73e32ad0361b57aa1beeace86159117ca02dac69fddceedcf5d933c945",
+      "pruned_experts": 2471,
+      "actual_keep_rate": 0.5978190104166666
+    }
+  },
+  "versions": {
+    "torch": "2.13.0",
+    "vllm": "0.23.1rc1.dev1458+g4986caaa.precompiled",
+    "transformers": "5.22.1",
+    "aiohttp": "3.14.5"
+  },
+  "runtime_config": {
+    "purpose": "H800 Qwen3-30B-A3B-Instruct-2507 SHAPE throughput experiment",
+    "validation_status": "eager_serving_smoke_passed_graph_mode_and_throughput_pending",
+    "smoke_results": "results/qwen3-30b-a3b/h800_environment_smoke/summary.json",
+    "python": "3.12",
+    "source": {
+      "repository": "https://github.com/Alizen-1009/vllm-moe_pruning.git",
+      "commit": "4986caaa5044cf023e4118f9cc15aa30bc2af9dd",
+      "archive_url": "https://codeload.github.com/Alizen-1009/vllm-moe_pruning/tar.gz/4986caaa5044cf023e4118f9cc15aa30bc2af9dd",
+      "archive_sha256": "46053401a69b2d62fdcdb2e348c98df0707b711ed9240c11a36a9799b6638a4f"
+    },
+    "precompiled": {
+      "upstream_commit": "e222c33f2f568b54b41d2ebfc44f6c85ea072737",
+      "wheel_version": "0.23.1rc1.dev1458+ge222c33f2",
+      "wheel_url": "https://wheels.vllm.ai/e222c33f2f568b54b41d2ebfc44f6c85ea072737/vllm-0.23.1rc1.dev1458%2Bge222c33f2-cp38-abi3-manylinux_2_28_x86_64.whl",
+      "wheel_sha256": "50acb1aae4ce8e19acf3cdf5686992883ae96f1007ac01f70b6b71f846364a0a",
+      "dependency_lock": "requirements/h800-vllm.lock.txt",
+      "cuda_variant": "cu130",
+      "torch_requirement": "2.13.0",
+      "note": "Source and precompiled extension commits differ, as in the prior experiment. Dependency checks, native imports, BF16 CUDA matmul and single-prompt BF16 Triton eager serving passed for all three variants. CUDA graphs, torch.compile, zero-weight-reference equivalence and throughput are not yet validated."
+    },
+    "model": {
+      "id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+      "local_path": "/home/zhangyh/model-dir",
+      "profile_recorded_revision": "0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe",
+      "local_revision_verified": false,
+      "dtype": "bfloat16"
+    },
+    "profiles": {
+      "routing_mode": "post_topk_drop",
+      "keep_0_8": "results/qwen3-30b-a3b/throughput_profiles/keep_0_8.json",
+      "keep_0_6": "results/qwen3-30b-a3b/throughput_profiles/keep_0_6.json"
+    },
+    "remote": {
+      "ssh_host": "h800",
+      "conda_environment": "/home/zhangyh/miniconda3/envs/shape-vllm",
+      "workspace": "/home/zhangyh/shape-experiments",
+      "gpu_index_candidate": 1,
+      "gpu_uuid_candidate": "GPU-13e1f305-ea69-0daf-ea9a-c40fee289704",
+      "gpu_reserved": false
+    }
+  },
+  "scope": "Real GSM8K chat workload; variable actual output lengths, same limits. Not an accuracy evaluation."
+}

@@ -1,0 +1,43 @@
+{
+  "purpose": "H800 Qwen3-30B-A3B-Instruct-2507 SHAPE throughput experiment",
+  "validation_status": "eager_smoke_graph_pilot_and_full_gsm8k_throughput_verified",
+  "benchmark_results": "results/qwen3-30b-a3b/h800_gsm8k_throughput/summary.json",
+  "smoke_results": "results/qwen3-30b-a3b/h800_environment_smoke/summary.json",
+  "python": "3.12",
+  "source": {
+    "repository": "https://github.com/Alizen-1009/vllm-moe_pruning.git",
+    "commit": "4986caaa5044cf023e4118f9cc15aa30bc2af9dd",
+    "archive_url": "https://codeload.github.com/Alizen-1009/vllm-moe_pruning/tar.gz/4986caaa5044cf023e4118f9cc15aa30bc2af9dd",
+    "archive_sha256": "46053401a69b2d62fdcdb2e348c98df0707b711ed9240c11a36a9799b6638a4f"
+  },
+  "precompiled": {
+    "upstream_commit": "e222c33f2f568b54b41d2ebfc44f6c85ea072737",
+    "wheel_version": "0.23.1rc1.dev1458+ge222c33f2",
+    "wheel_url": "https://wheels.vllm.ai/e222c33f2f568b54b41d2ebfc44f6c85ea072737/vllm-0.23.1rc1.dev1458%2Bge222c33f2-cp38-abi3-manylinux_2_28_x86_64.whl",
+    "wheel_sha256": "50acb1aae4ce8e19acf3cdf5686992883ae96f1007ac01f70b6b71f846364a0a",
+    "dependency_lock": "requirements/h800-vllm.lock.txt",
+    "cuda_variant": "cu130",
+    "torch_requirement": "2.13.0",
+    "note": "Source and precompiled extension commits differ, as in the prior experiment. Dependency checks, native imports, BF16 CUDA matmul, eager serving, three-variant graph pilots and 9 full GSM8K throughput passes were verified on this H800. This does not establish compatibility for other model/backend paths, answer accuracy or zero-weight-reference numerical equivalence."
+  },
+  "model": {
+    "id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "local_path": "/home/zhangyh/model-dir",
+    "profile_recorded_revision": "0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe",
+    "local_revision_verified": false,
+    "dtype": "bfloat16"
+  },
+  "profiles": {
+    "routing_mode": "post_topk_drop",
+    "keep_0_8": "results/qwen3-30b-a3b/throughput_profiles/keep_0_8.json",
+    "keep_0_6": "results/qwen3-30b-a3b/throughput_profiles/keep_0_6.json"
+  },
+  "remote": {
+    "ssh_host": "h800",
+    "conda_environment": "/home/zhangyh/miniconda3/envs/shape-vllm",
+    "workspace": "/home/zhangyh/shape-experiments",
+    "gpu_index_candidate": 1,
+    "gpu_uuid_candidate": "GPU-13e1f305-ea69-0daf-ea9a-c40fee289704",
+    "gpu_reserved": false
+  }
+}

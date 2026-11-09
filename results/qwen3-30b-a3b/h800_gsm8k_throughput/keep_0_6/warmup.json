@@ -1,0 +1,15 @@
+{
+  "num_requests": 256,
+  "successful_requests": 256,
+  "failed_requests": 0,
+  "wall_seconds": 38.959795291535556,
+  "prompt_tokens": 21725,
+  "completion_tokens": 71939,
+  "output_tokens_per_second": 1846.4932749692744,
+  "requests_per_second": 6.570876414630926,
+  "mean_output_tokens": 281.01171875,
+  "max_output_tokens": 2048,
+  "length_capped_requests": 2,
+  "latency_p50_seconds": 7.067473332863301,
+  "latency_p95_seconds": 13.147214276483282
+}

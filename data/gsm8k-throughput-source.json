@@ -1,0 +1,11 @@
+{
+  "dataset": "GSM8K",
+  "split": "test",
+  "rows": 1319,
+  "repository": "https://github.com/openai/grade-school-math.git",
+  "commit": "3101c7d5072418e28b9008a6636bde82a006892c",
+  "url": "https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/test.jsonl",
+  "sha256": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14",
+  "remote_file": "/home/zhangyh/shape-experiments/datasets/gsm8k/test.jsonl",
+  "calibration_note": "This is the full test set for throughput, not the 25-example calibration file. Existing expert selections are reused."
+}
