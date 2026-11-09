@@ -105,7 +105,7 @@ Generated activations, distilled data, adapters, and exported models are exclude
 ```bibtex
 @inproceedings{zhang2026shape,
   title         = {SHAPE: Coalition-Aware Expert Pruning for Sparse Mixture-of-Experts LLMs},
-  author        = {Zhang, Yuhao and Jiang, HongXu and Zhang, YiXiang and Zhang, Zheng},
+  author        = {Zhang, Yuhao},
   booktitle     = {Proceedings of the International Joint Conference on Neural Networks},
   year          = {2026},
   eprint        = {2606.09886},
