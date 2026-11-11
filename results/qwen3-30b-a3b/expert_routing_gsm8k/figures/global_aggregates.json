@@ -1,0 +1,201 @@
+{
+  "questions": 1319,
+  "pilot": false,
+  "actual_retained_fractions": {
+    "keep_08": 0.79931640625,
+    "keep_06": 0.5978190104166666
+  },
+  "interpretation": "Selected pre-drop routes and surviving contributions; not executed work. Aggregates are token-layer/count/weight weighted, not means of layer fractions.",
+  "variants": {
+    "original": {
+      "prompt": {
+        "token_layer_count": 4894512,
+        "selected_count": 39156096,
+        "surviving_count": 39156096,
+        "selected_weight": 4894496.572784424,
+        "surviving_weight": 4894496.572784424,
+        "overlap_count": 39156096,
+        "mean_survivors": 8.0,
+        "dropped_selection_fraction": 0.0,
+        "dropped_weight_fraction": 0.0,
+        "overlap_fraction": 1.0
+      },
+      "answer": {
+        "token_layer_count": 7860480,
+        "selected_count": 62883840,
+        "surviving_count": 62883840,
+        "selected_weight": 7860459.435516357,
+        "surviving_weight": 7860459.435516357,
+        "overlap_count": 62883840,
+        "mean_survivors": 8.0,
+        "dropped_selection_fraction": 0.0,
+        "dropped_weight_fraction": 0.0,
+        "overlap_fraction": 1.0
+      },
+      "combined": {
+        "token_layer_count": 12754992,
+        "selected_count": 102039936,
+        "surviving_count": 102039936,
+        "selected_weight": 12754956.008300781,
+        "surviving_weight": 12754956.008300781,
+        "overlap_count": 102039936,
+        "mean_survivors": 8.0,
+        "dropped_selection_fraction": 0.0,
+        "dropped_weight_fraction": 0.0,
+        "overlap_fraction": 1.0
+      }
+    },
+    "keep_08": {
+      "prompt": {
+        "token_layer_count": 4894512,
+        "selected_count": 39156096,
+        "surviving_count": 38342451,
+        "selected_weight": 4894501.804748535,
+        "surviving_weight": 4818682.758834839,
+        "overlap_count": 38050474,
+        "mean_survivors": 7.83376381547333,
+        "dropped_selection_fraction": 0.020779523065833735,
+        "dropped_weight_fraction": 0.015490656442324398,
+        "overlap_fraction": 0.9717637325232832
+      },
+      "answer": {
+        "token_layer_count": 7860480,
+        "selected_count": 62883840,
+        "surviving_count": 62161445,
+        "selected_weight": 7860458.329589844,
+        "surviving_weight": 7788269.229614258,
+        "overlap_count": 59557343,
+        "mean_survivors": 7.908097851530695,
+        "dropped_selection_fraction": 0.011487768558663083,
+        "dropped_weight_fraction": 0.009183828340370166,
+        "overlap_fraction": 0.9471009244982495
+      },
+      "combined": {
+        "token_layer_count": 12754992,
+        "selected_count": 102039936,
+        "surviving_count": 100503896,
+        "selected_weight": 12754960.134338379,
+        "surviving_weight": 12606951.988449097,
+        "overlap_count": 97607817,
+        "mean_survivors": 7.8795734250558525,
+        "dropped_selection_fraction": 0.015053321868018443,
+        "dropped_weight_fraction": 0.01160396773729,
+        "overlap_fraction": 0.9565648590763522
+      }
+    },
+    "keep_06": {
+      "prompt": {
+        "token_layer_count": 4894512,
+        "selected_count": 39156096,
+        "surviving_count": 35114520,
+        "selected_weight": 4894496.115837097,
+        "surviving_weight": 4473114.593742371,
+        "overlap_count": 35575275,
+        "mean_survivors": 7.174263746825016,
+        "dropped_selection_fraction": 0.10321703164687307,
+        "dropped_weight_fraction": 0.08609293216747367,
+        "overlap_fraction": 0.9085501016240229
+      },
+      "answer": {
+        "token_layer_count": 7860480,
+        "selected_count": 62883840,
+        "surviving_count": 57286816,
+        "selected_weight": 7860459.6220703125,
+        "surviving_weight": 7252430.861480713,
+        "overlap_count": 54997177,
+        "mean_survivors": 7.2879539163002764,
+        "dropped_selection_fraction": 0.0890057604624654,
+        "dropped_weight_fraction": 0.07735282538471397,
+        "overlap_fraction": 0.874583629116797
+      },
+      "combined": {
+        "token_layer_count": 12754992,
+        "selected_count": 102039936,
+        "surviving_count": 92401336,
+        "selected_weight": 12754955.73790741,
+        "surviving_weight": 11725545.455223083,
+        "overlap_count": 90572452,
+        "mean_survivors": 7.24432724065997,
+        "dropped_selection_fraction": 0.0944590949175037,
+        "dropped_weight_fraction": 0.08070669188015644,
+        "overlap_fraction": 0.8876176872553115
+      }
+    },
+    "counterfactual_08": {
+      "prompt": {
+        "token_layer_count": 4894512,
+        "selected_count": 39156096,
+        "surviving_count": 38354571,
+        "selected_weight": 4894496.572784424,
+        "surviving_weight": 4820913.149795532,
+        "overlap_count": 39156096,
+        "mean_survivors": 7.836240058252998,
+        "dropped_selection_fraction": 0.020469992718375192,
+        "dropped_weight_fraction": 0.015033910412369709,
+        "overlap_fraction": 1.0
+      },
+      "answer": {
+        "token_layer_count": 7860480,
+        "selected_count": 62883840,
+        "surviving_count": 62170002,
+        "selected_weight": 7860459.435516357,
+        "surviving_weight": 7789318.082244873,
+        "overlap_count": 62883840,
+        "mean_survivors": 7.909186461895457,
+        "dropped_selection_fraction": 0.011351692263067904,
+        "dropped_weight_fraction": 0.00905053373216868,
+        "overlap_fraction": 1.0
+      },
+      "combined": {
+        "token_layer_count": 12754992,
+        "selected_count": 102039936,
+        "surviving_count": 100524573,
+        "selected_weight": 12754956.008300781,
+        "surviving_weight": 12610231.232040405,
+        "overlap_count": 102039936,
+        "mean_survivors": 7.881194515841327,
+        "dropped_selection_fraction": 0.01485068551983415,
+        "dropped_weight_fraction": 0.01134655236491533,
+        "overlap_fraction": 1.0
+      }
+    },
+    "counterfactual_06": {
+      "prompt": {
+        "token_layer_count": 4894512,
+        "selected_count": 39156096,
+        "surviving_count": 35339396,
+        "selected_weight": 4894496.572784424,
+        "surviving_weight": 4508062.459884644,
+        "overlap_count": 39156096,
+        "mean_survivors": 7.220208265910881,
+        "dropped_selection_fraction": 0.09747396676113983,
+        "dropped_weight_fraction": 0.07895278036326059,
+        "overlap_fraction": 1.0
+      },
+      "answer": {
+        "token_layer_count": 7860480,
+        "selected_count": 62883840,
+        "surviving_count": 57747490,
+        "selected_weight": 7860459.435516357,
+        "surviving_weight": 7309353.7574157715,
+        "overlap_count": 62883840,
+        "mean_survivors": 7.3465602609509855,
+        "dropped_selection_fraction": 0.08167996738112686,
+        "dropped_weight_fraction": 0.0701111280608477,
+        "overlap_fraction": 1.0
+      },
+      "combined": {
+        "token_layer_count": 12754992,
+        "selected_count": 102039936,
+        "surviving_count": 93086886,
+        "selected_weight": 12754956.008300781,
+        "surviving_weight": 11817416.217300415,
+        "overlap_count": 102039936,
+        "mean_survivors": 7.298074824351125,
+        "dropped_selection_fraction": 0.08774064695610939,
+        "dropped_weight_fraction": 0.07350396115754743,
+        "overlap_fraction": 1.0
+      }
+    }
+  }
+}

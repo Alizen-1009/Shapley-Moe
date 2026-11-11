@@ -1,0 +1,24 @@
+test_preserves_layer_budgets_and_orders_high_low_variants (test_build_faithfulness_profiles.BuildFaithfulnessProfilesTest.test_preserves_layer_budgets_and_orders_high_low_variants) ... ok
+test_rejects_missing_expert_scores (test_build_faithfulness_profiles.BuildFaithfulnessProfilesTest.test_rejects_missing_expert_scores) ... ok
+test_no_overwrite (test_compare_expert_routing.ProtocolTests.test_no_overwrite) ... ok
+test_selection_metadata_and_validation (test_compare_expert_routing.ProtocolTests.test_selection_metadata_and_validation) ... ok
+test_statistics_counterfactual_and_overlap (test_compare_expert_routing.ProtocolTests.test_statistics_counterfactual_and_overlap) ... ok
+test_tiny_experts_mask_vs_zero_down_and_no_drop (test_compare_expert_routing.ProtocolTests.test_tiny_experts_mask_vs_zero_down_and_no_drop) ... skipped 'torch/numpy unavailable'
+test_tokens_explicit_spans_and_no_eos (test_compare_expert_routing.ProtocolTests.test_tokens_explicit_spans_and_no_eos) ... ok
+test_aggregate_sample_standard_deviation_and_speedup (test_gsm8k_throughput.ThroughputTests.test_aggregate_sample_standard_deviation_and_speedup) ... ok
+test_all_failures_are_visible (test_gsm8k_throughput.ThroughputTests.test_all_failures_are_visible) ... ok
+test_dataset_checksum_required (test_gsm8k_throughput.ThroughputTests.test_dataset_checksum_required) ... ok
+test_invalid_measurements_rejected (test_gsm8k_throughput.ThroughputTests.test_invalid_measurements_rejected) ... ok
+test_metrics_use_full_wall_time_and_actual_tokens (test_gsm8k_throughput.ThroughputTests.test_metrics_use_full_wall_time_and_actual_tokens) ... ok
+test_port_check_allows_time_wait_but_not_live_listener (test_gsm8k_throughput.ThroughputTests.test_port_check_allows_time_wait_but_not_live_listener) ... ok
+test_real_profiles_match_existing_selections (test_gsm8k_throughput.ThroughputTests.test_real_profiles_match_existing_selections) ... ok
+test_server_log_confirms_each_layer_and_routing_mode (test_gsm8k_throughput.ThroughputTests.test_server_log_confirms_each_layer_and_routing_mode) ... ok
+test_wrong_routing_mode_rejected (test_gsm8k_throughput.ThroughputTests.test_wrong_routing_mode_rejected) ... ok
+test_checksum_and_pilot_label (test_verify_expert_routing.RoutingVerificationTests.test_checksum_and_pilot_label) ... ok
+test_recompute_and_reject_summary_corruption (test_verify_expert_routing.RoutingVerificationTests.test_recompute_and_reject_summary_corruption) ... ok
+test_recomputes_all_requests_and_rejects_tampering (test_verify_gsm8k_throughput.VerifyTests.test_recomputes_all_requests_and_rejects_tampering) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.389s
+
+OK (skipped=1)

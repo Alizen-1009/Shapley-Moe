@@ -1,0 +1,33 @@
+{
+  "verified": true,
+  "questions": 1319,
+  "pilot": false,
+  "tokens": 276281,
+  "included_tokens": 265729,
+  "route_rows": 189936,
+  "layers": 48,
+  "experts": 128,
+  "top_k": 8,
+  "checks": {
+    "coverage": true,
+    "dimensions": true,
+    "unique_ids": true,
+    "positive_bf16_weights": true,
+    "normalization": true,
+    "tokens_checksum": true,
+    "route_checksums": true,
+    "first_layer_equal": true,
+    "retained_fractions": true,
+    "question_counts": true,
+    "pilot_label": true,
+    "all_summary_statistics": true,
+    "mask_only_counterfactuals": true,
+    "count_conservation": true
+  },
+  "float_absolute_tolerance": 1e-09,
+  "source_dataset_verified": true,
+  "source_tokenization_verified": true,
+  "scope": "Raw archive statistics independently recomputed; source dataset/tokenization verified when supplied. Not a kernel-execution or cross-backend equivalence check.",
+  "manifest_sha256": "106c9f35a738d2d33d0a6d9afabfa6fcaca9097391d48864a0223ed90e68fa51",
+  "summary_sha256": "11c7b8b0f36d764a1d87ff9c05393c79d0ce46c71f6b88c96916c17112e9a158"
+}

@@ -1,0 +1,1 @@
+{"no_drop_backbone": "exact BF16 output and route equality; rtol=atol=0", "fixed_hidden_mask_probe": "native logits/IDs preserved; weights exactly masked; dropped contribution exercised"}

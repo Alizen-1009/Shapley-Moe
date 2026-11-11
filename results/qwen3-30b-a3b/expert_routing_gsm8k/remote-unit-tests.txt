@@ -1,0 +1,12 @@
+test_no_overwrite (test_compare_expert_routing.ProtocolTests.test_no_overwrite) ... ok
+test_selection_metadata_and_validation (test_compare_expert_routing.ProtocolTests.test_selection_metadata_and_validation) ... ok
+test_statistics_counterfactual_and_overlap (test_compare_expert_routing.ProtocolTests.test_statistics_counterfactual_and_overlap) ... ok
+test_tiny_experts_mask_vs_zero_down_and_no_drop (test_compare_expert_routing.ProtocolTests.test_tiny_experts_mask_vs_zero_down_and_no_drop) ... ok
+test_tokens_explicit_spans_and_no_eos (test_compare_expert_routing.ProtocolTests.test_tokens_explicit_spans_and_no_eos) ... ok
+test_checksum_and_pilot_label (test_verify_expert_routing.RoutingVerificationTests.test_checksum_and_pilot_label) ... ok
+test_recompute_and_reject_summary_corruption (test_verify_expert_routing.RoutingVerificationTests.test_recompute_and_reject_summary_corruption) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.300s
+
+OK
